@@ -1,12 +1,17 @@
 """RuTracker session, login (with captcha), raw search; FlareSolverr test."""
 
 import time
+from dataclasses import asdict
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
+from rutrackarr.releases.language import assess
+from rutrackarr.releases.sections import classify
+from rutrackarr.releases.title import parse_title
+from rutrackarr.rutracker import parse
 from rutrackarr.rutracker.client import RuTrackerClient
 from rutrackarr.rutracker.errors import NotConfiguredError, RuTrackerError
 
@@ -48,6 +53,21 @@ class LoginView(BaseModel):
     captcha_id: str | None = None
 
 
+class SectionView(BaseModel):
+    kind: str
+    origin: str
+    video: bool
+
+
+class LanguageView(BaseModel):
+    tier: int
+    label: str
+    rank: int
+    original: str | None
+    en_subs: bool
+    notes: list[str]
+
+
 class SearchResult(BaseModel):
     topic_id: int
     title: str
@@ -61,6 +81,9 @@ class SearchResult(BaseModel):
     author: str
     approved: str | None
     url: str
+    section: SectionView
+    language: LanguageView
+    parsed: dict[str, Any]  # releases.title.ParsedTitle
 
 
 class SearchView(BaseModel):
@@ -130,14 +153,34 @@ async def search(request: Request, q: str = "", f: str = "") -> dict[str, Any]:
     return {
         "query": q,
         "took_ms": int((time.monotonic() - start) * 1000),
-        "results": [{**r.__dict__, "url": client.topic_url(r.topic_id)} for r in rows],
+        "results": [_result(r, client.topic_url(r.topic_id)) for r in rows],
+    }
+
+
+class FlareSolverrTest(BaseModel):
+    url: str | None = None  # unsaved form value; falls back to the setting
+
+
+def _result(row: parse.SearchRow, url: str) -> dict[str, Any]:
+    section = classify(row.forum)
+    title = parse_title(row.title)
+    return {
+        **row.__dict__,
+        "url": url,
+        "section": asdict(section),
+        "language": asdict(assess(title, section)),
+        "parsed": asdict(title),
     }
 
 
 @router.post("/flaresolverr/test")
-async def flaresolverr_test(request: Request) -> dict[str, str]:
+async def flaresolverr_test(
+    request: Request, body: FlareSolverrTest | None = None
+) -> dict[str, str]:
     try:
-        status = await request.app.state.rutracker_http.flaresolverr_health()
+        status = await request.app.state.rutracker_http.flaresolverr_health(
+            body.url if body else None
+        )
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"FlareSolverr not reachable: {e}") from None
     return {"status": status}

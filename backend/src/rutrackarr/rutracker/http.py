@@ -182,8 +182,8 @@ class RuTrackerHttp:
             except httpx.HTTPError as e:
                 raise RuTrackerError(f"Could not fetch {url}: {e}") from e
 
-    async def flaresolverr_health(self) -> str:
-        url = self._fs_url().rstrip("/") + "/health"
+    async def flaresolverr_health(self, base_url: str | None = None) -> str:
+        url = (base_url or self._fs_url()).strip().rstrip("/") + "/health"
         async with httpx.AsyncClient(timeout=10, transport=self._transport) as c:
             r = await c.get(url)
         r.raise_for_status()

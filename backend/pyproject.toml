@@ -47,6 +47,7 @@ ignore = ["S101", "RUF001", "RUF002", "RUF003"]
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S"]
 "tests/fixtures/**" = ["E501"]  # verbatim HTML rows
+"tests/test_releases.py" = ["E501"]  # verbatim RuTracker titles
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

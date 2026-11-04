@@ -73,6 +73,59 @@ export type SearchResult = {
   author: string
   approved: string | null
   url: string
+  section: { kind: string; origin: string; video: boolean }
+  language: Language
+  parsed: ParsedTitle
+}
+
+export type Language = {
+  tier: number // 1 original+subs, 2 RU voice, 3 EN dub, 4 other, 9 unknown
+  label: string
+  rank: number
+  original: string | null
+  en_subs: boolean
+  notes: string[]
+}
+
+export type Audio = {
+  lang: string | null
+  voice: string | null
+  original: boolean
+  count: number
+  info: string | null
+  external: boolean | null
+  partial: boolean
+}
+
+export type ParsedTitle = {
+  raw: string
+  names: string[]
+  director: string | null
+  prefix: string[]
+  kinds: string[]
+  season: number | null
+  season_last: number | null
+  episodes: {
+    first: number | null
+    last: number | null
+    total: number | null
+    specials: number | null
+    specials_total: number | null
+  } | null
+  year: number | null
+  year_end: number | null
+  source: string | null
+  uhd: boolean
+  codec: string | null
+  resolution: string | null
+  hdr: string[]
+  hardsub: string | null
+  localized_video: boolean
+  tags: string[]
+  audio: Audio[]
+  subs: string[]
+  subs_unknown: boolean
+  leftovers: string[]
 }
 
 export type SearchView = { query: string; took_ms: number; results: SearchResult[] }

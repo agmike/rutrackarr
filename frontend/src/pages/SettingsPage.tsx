@@ -69,7 +69,7 @@ export function SettingsPage() {
           fields={flaresolverr}
           view={data}
         >
-          <FlareSolverrTest />
+          {(pending) => <FlareSolverrTest pending={pending} />}
         </SettingsSection>
       </section>
       <section id="metadata">
@@ -85,7 +85,7 @@ export function SettingsPage() {
           fields={arr}
           view={data}
         >
-          <ArrConnectionTests />
+          {(pending) => <ArrConnectionTests pending={pending} />}
         </SettingsSection>
       </section>
       <section id="general">

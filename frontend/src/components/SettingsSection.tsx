@@ -29,7 +29,8 @@ export function SettingsSection({
   description?: ReactNode
   fields: FieldSpec[]
   view: SettingsView
-  children?: ReactNode
+  /** Extra controls; a function gets the values entered but not saved yet (secrets only when typed). */
+  children?: ReactNode | ((pending: Record<string, string>) => ReactNode)
 }) {
   const qc = useQueryClient()
   const initial = useMemo(
@@ -118,7 +119,7 @@ export function SettingsSection({
             )}
           </div>
         ))}
-        {children}
+        {typeof children === "function" ? children(pendingValues(fields, values, secrets)) : children}
       </CardContent>
       <CardFooter className="justify-end gap-2">
         <Button
@@ -138,6 +139,22 @@ export function SettingsSection({
       </CardFooter>
     </Card>
   )
+}
+
+function pendingValues(
+  fields: FieldSpec[],
+  values: Record<string, string>,
+  secrets: Record<string, SecretChange>,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const f of fields) {
+    if (f.type !== "secret") out[f.key] = values[f.key] ?? ""
+    else {
+      const c = secrets[f.key]
+      if (c && "set" in c && c.set) out[f.key] = c.set
+    }
+  }
+  return out
 }
 
 function SecretBadge({ saved, change }: { saved: boolean; change?: SecretChange }) {

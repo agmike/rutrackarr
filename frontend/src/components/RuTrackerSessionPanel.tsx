@@ -102,9 +102,10 @@ export function RuTrackerSessionPanel() {
   )
 }
 
-export function FlareSolverrTest() {
+/** Tests the URL currently in the form (saved or not). */
+export function FlareSolverrTest({ pending }: { pending: Record<string, string> }) {
   const test = useMutation({
-    mutationFn: () => api.post<{ status: string }>("flaresolverr/test"),
+    mutationFn: () => api.post<{ status: string }>("flaresolverr/test", { url: pending["flaresolverr.url"] || null }),
     onSuccess: (r) => toast.success(`FlareSolverr reachable (${r.status})`),
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -117,9 +118,14 @@ export function FlareSolverrTest() {
   )
 }
 
-export function ArrConnectionTests() {
+/** Tests the URL / API key currently in the form; an untouched API key uses the saved one. */
+export function ArrConnectionTests({ pending }: { pending: Record<string, string> }) {
   const test = useMutation({
-    mutationFn: (app: "sonarr" | "radarr") => api.post<{ app: string; version: string }>(`arr/${app}/test`),
+    mutationFn: (app: "sonarr" | "radarr") =>
+      api.post<{ app: string; version: string }>(`arr/${app}/test`, {
+        url: pending[`${app}.url`] || null,
+        api_key: pending[`${app}.api_key`] || null,
+      }),
     onSuccess: (r) => toast.success(`${r.app} reachable (version ${r.version})`),
     onError: (e) => toast.error(errorMessage(e)),
   })
