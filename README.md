@@ -3,7 +3,16 @@
 A Torznab indexer for [RuTracker](https://rutracker.org) built for Sonarr and Radarr,
 with language-aware release ranking.
 
-> **Status: early development.** Not ready for use yet.
+> [!WARNING]
+> **Early development — not ready for use.**
+>
+> - This is a personal project, built for my own homelab first. The code is **largely
+>   written with an AI coding assistant (Claude)** and reviewed by me; I am not a web
+>   developer. Expect rough edges, breaking changes and bugs — use at your own risk.
+> - It is **not affiliated with RuTracker**, Sonarr, Radarr, Prowlarr or Jackett. You need
+>   your own RuTracker account and are responsible for following the tracker's rules.
+> - No warranty of any kind (see [LICENSE](LICENSE)). Issues and suggestions are welcome,
+>   but support is best-effort.
 
 ## Why
 
