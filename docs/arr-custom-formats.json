@@ -1,0 +1,167 @@
+[
+  {
+    "name": "RuTrackarr T1 · Original + Subs",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRTA-T1\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr T2 · RU Voice",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRTA-T2\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr T3 · EN Dub",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRTA-T3\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr T4 · Other",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRTA-T4\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr T9 · Not in Title",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRTA-T9\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr · RU Dub",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusDub\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr · RU MVO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusMVO\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr · RU DVO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusDVO\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr · RU AVO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusAVO\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr · RU VO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusVO\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr · RU Voice (type not stated)",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusVoice\\b"
+        }
+      }
+    ]
+  }
+]
