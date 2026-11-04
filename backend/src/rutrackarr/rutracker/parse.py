@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from enum import StrEnum
 from urllib.parse import parse_qs, urlparse
 
 from selectolax.lexbor import LexborHTMLParser as HTMLParser
@@ -46,6 +47,39 @@ def maintenance_message(html: str) -> str | None:
         if text and any(m in text.lower() for m in MAINTENANCE_MARKERS):
             return text[:300]
     return "RuTracker is temporarily unavailable"
+
+
+class PageKind(StrEnum):
+    """What a RuTracker page positively shows (Cloudflare challenges are handled earlier)."""
+
+    MAINTENANCE = "maintenance"
+    LOGGED_IN = "logged_in"
+    CAPTCHA = "captcha"
+    LOGIN_FORM = "login_form"
+    UNKNOWN = "unknown"
+
+
+def classify(html: str) -> PageKind:
+    if maintenance_message(html):
+        return PageKind.MAINTENANCE
+    tree = HTMLParser(html)
+    if tree.css_first("#logged-in-username"):
+        return PageKind.LOGGED_IN
+    if captcha(html):
+        return PageKind.CAPTCHA
+    if tree.css_first('input[name="login_username"]') and tree.css_first(
+        'input[name="login_password"]'
+    ):
+        return PageKind.LOGIN_FORM
+    return PageKind.UNKNOWN
+
+
+def page_summary(html: str, status: int) -> str:
+    """Short description of an unrecognised page for error messages / diagnosis."""
+    tree = HTMLParser(html)
+    title = _text(tree.css_first("title")) or "no title"
+    body = _text(tree.css_first("body"))[:200]
+    return f"HTTP {status}, title {title!r}" + (f": {body}" if body else "")
 
 
 def logged_in_user(html: str) -> str | None:

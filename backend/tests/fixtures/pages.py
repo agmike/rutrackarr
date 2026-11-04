@@ -26,8 +26,13 @@ LOGIN_WRONG = (
 INDEX_LOGGED_IN = f"<html><body>{LOGGED_IN_HEADER}<p>index</p></body></html>"
 
 
+# Logged-out pages carry the header quick-login form instead of the username.
+HEADER_LOGIN_FORM = """<form action="https://rutracker.org/forum/login.php" method="post">
+<input name="login_username"><input name="login_password" type="password"></form>"""
+
+
 def search_page(rows: str, logged_in: bool = True) -> str:
-    head = LOGGED_IN_HEADER if logged_in else ""
+    head = LOGGED_IN_HEADER if logged_in else HEADER_LOGIN_FORM
     return f"""<html><body>{head}<table id="tor-tbl"><tbody>{rows}</tbody></table></body></html>"""
 
 
@@ -56,3 +61,6 @@ ROW_SPLIT_TITLE = """<tr class="tCenter hl-tr"><td class="row1 t-ico"></td><td c
 
 MAINTENANCE = """<html><head><title>rutracker.org</title></head><body>
 <div class="msg-main">Форум временно отключен на профилактические работы до 04:45 MSK</div></body></html>"""
+
+UNKNOWN = """<html><head><title>502 Bad Gateway</title></head>
+<body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>"""

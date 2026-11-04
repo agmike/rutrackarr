@@ -1,5 +1,6 @@
 from rutrackarr.rutracker import parse
 from rutrackarr.rutracker.client import search_term
+from rutrackarr.rutracker.parse import PageKind
 from tests.fixtures import pages
 
 
@@ -41,3 +42,25 @@ def test_maintenance_detection():
     assert "04:45" in parse.maintenance_message(pages.MAINTENANCE)
     row = pages.ROW_HYOUKA.replace("Хёка / Hyouka", "Профилактические работы / Hyouka")
     assert parse.maintenance_message(pages.search_page(row)) is None
+
+
+def test_classify_is_positive():
+    assert parse.classify(pages.MAINTENANCE) is PageKind.MAINTENANCE
+    assert parse.classify(pages.INDEX_LOGGED_IN) is PageKind.LOGGED_IN
+    assert parse.classify(pages.search_page(pages.ROW_HYOUKA)) is PageKind.LOGGED_IN
+    assert parse.classify(pages.LOGIN_FORM_CAPTCHA) is PageKind.CAPTCHA
+    assert parse.classify(pages.LOGIN_FORM) is PageKind.LOGIN_FORM
+    assert parse.classify(pages.LOGIN_WRONG) is PageKind.LOGIN_FORM
+    assert parse.classify(pages.search_page("", logged_in=False)) is PageKind.LOGIN_FORM
+    # A results table without the username is not "logged in" — and not a login form either.
+    assert parse.classify(pages.UNKNOWN) is PageKind.UNKNOWN
+    assert parse.classify("") is PageKind.UNKNOWN
+    assert (
+        parse.classify("<html><body><table id='tor-tbl'></table></body></html>") is PageKind.UNKNOWN
+    )
+
+
+def test_page_summary():
+    s = parse.page_summary(pages.UNKNOWN, 502)
+    assert s.startswith("HTTP 502, title '502 Bad Gateway'") and "nginx" in s
+    assert parse.page_summary("", 200) == "HTTP 200, title 'no title'"

@@ -16,3 +16,11 @@ class LoginFailedError(RuTrackerError):
 
 class MaintenanceError(RuTrackerError):
     """The site shows its maintenance page; nothing to do but wait (no re-login)."""
+
+
+class UnexpectedPageError(RuTrackerError):
+    """A page we don't recognise — reported, never treated as an expired session."""
+
+
+class CaptchaRequiredError(LoginFailedError):
+    pass

@@ -7,8 +7,15 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from rutrackarr.rutracker import parse
-from rutrackarr.rutracker.errors import LoginFailedError, NotConfiguredError, RuTrackerError
+from rutrackarr.rutracker.errors import (
+    CaptchaRequiredError,
+    LoginFailedError,
+    NotConfiguredError,
+    RuTrackerError,
+    UnexpectedPageError,
+)
 from rutrackarr.rutracker.http import RuTrackerHttp
+from rutrackarr.rutracker.parse import PageKind
 from rutrackarr.rutracker.store import SessionStore
 
 LOGIN = "forum/login.php"
@@ -75,20 +82,28 @@ class RuTrackerClient:
             self._captchas.pop(captcha_id, None)
         else:
             page = await self._http.request("GET", LOGIN)
-            if user := parse.logged_in_user(page.text):
-                return self._logged_in(user)
-            if ch := parse.captcha(page.text):
-                return LoginResult("captcha", captcha_id=self._remember(ch))
+            kind = parse.classify(page.text)
+            if kind is PageKind.LOGGED_IN:
+                return self._logged_in(parse.logged_in_user(page.text) or username)
+            if kind is PageKind.CAPTCHA:
+                return LoginResult("captcha", captcha_id=self._remember(parse.captcha(page.text)))  # type: ignore[arg-type]
+            if kind is not PageKind.LOGIN_FORM:
+                raise UnexpectedPageError(
+                    f"Unexpected login page: {parse.page_summary(page.text, page.status_code)}"
+                )
         resp = await self._http.request("POST", LOGIN, form=form)
-        if user := parse.logged_in_user(resp.text):
-            return self._logged_in(user)
-        if ch := parse.captcha(resp.text):
-            return LoginResult("captcha", captcha_id=self._remember(ch))
-        message = (
-            parse.login_error(resp.text) or "login failed (no session after submitting the form)"
+        kind = parse.classify(resp.text)
+        if kind is PageKind.LOGGED_IN:
+            return self._logged_in(parse.logged_in_user(resp.text) or username)
+        if kind is PageKind.CAPTCHA:
+            return LoginResult("captcha", captcha_id=self._remember(parse.captcha(resp.text)))  # type: ignore[arg-type]
+        if kind is PageKind.LOGIN_FORM:
+            message = parse.login_error(resp.text) or "RuTracker rejected the login"
+            self._store.record_error(f"Login failed: {message}")
+            raise LoginFailedError(message)
+        raise UnexpectedPageError(
+            f"Unexpected page after login: {parse.page_summary(resp.text, resp.status_code)}"
         )
-        self._store.record_error(f"Login failed: {message}")
-        raise LoginFailedError(message)
 
     def _logged_in(self, user: str) -> LoginResult:
         now = datetime.now(UTC)
@@ -98,10 +113,16 @@ class RuTrackerClient:
     async def check(self) -> str | None:
         """Logged-in username if the stored session is valid (one cheap request)."""
         page = await self._http.request("GET", "forum/index.php")
-        user = parse.logged_in_user(page.text)
-        if user:
+        kind = parse.classify(page.text)
+        if kind is PageKind.LOGGED_IN:
+            user = parse.logged_in_user(page.text)
             self._store.update(username=user, last_ok_at=datetime.now(UTC))
-        return user
+            return user
+        if kind is PageKind.LOGIN_FORM:
+            return None
+        raise UnexpectedPageError(
+            f"Unexpected page: {parse.page_summary(page.text, page.status_code)}"
+        )
 
     def logout(self) -> None:
         self._store.clear()
@@ -112,14 +133,22 @@ class RuTrackerClient:
         if forums:
             params["f"] = ",".join(str(f) for f in forums)
         page = await self._http.request("GET", SEARCH, params=params)
-        if parse.logged_in_user(page.text) is None:
-            # Session expired: log in once (never in a loop) and retry.
+        kind = parse.classify(page.text)
+        if kind is PageKind.LOGIN_FORM:
+            # Positively logged out: log in once (never in a loop) and retry.
             result = await self.login()
             if result.status != "ok":
-                raise LoginFailedError("RuTracker asks for a captcha — log in on the settings page")
+                raise CaptchaRequiredError(
+                    "RuTracker asks for a captcha — log in on the settings page"
+                )
             page = await self._http.request("GET", SEARCH, params=params)
-            if parse.logged_in_user(page.text) is None:
-                raise LoginFailedError("Still not logged in after re-login")
+            kind = parse.classify(page.text)
+        if kind is PageKind.CAPTCHA:
+            raise CaptchaRequiredError("RuTracker asks for a captcha — log in on the settings page")
+        if kind is not PageKind.LOGGED_IN:
+            raise UnexpectedPageError(
+                f"Unexpected search page: {parse.page_summary(page.text, page.status_code)}"
+            )
         self._store.update(last_ok_at=datetime.now(UTC))
         return parse.search_rows(page.text)
 

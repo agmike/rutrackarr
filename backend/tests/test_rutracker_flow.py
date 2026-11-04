@@ -195,3 +195,46 @@ def test_maintenance_page_no_relogin(api, net):
     assert r.status_code == 502
     assert "maintenance" in r.json()["detail"] and "04:45" in r.json()["detail"]
     assert not [c for c in net.calls if c.url.path == "/forum/login.php"]  # no login attempt
+
+
+def test_unknown_page_reported_without_login(api, net):
+    net.on("GET", "/forum/tracker.php", html(pages.UNKNOWN, status=502))
+    r = api.get("/api/rutracker/search", params={"q": "Хёка"})
+    assert r.status_code == 502
+    detail = r.json()["detail"]
+    assert "Unexpected" in detail and "HTTP 502" in detail and "Bad Gateway" in detail
+    assert not [c for c in net.calls if c.url.path == "/forum/login.php"]
+    assert "Bad Gateway" in api.get("/api/rutracker/session").json()["last_error"]
+
+
+def test_search_captcha_needs_manual_login(api, net):
+    net.on("GET", "/forum/tracker.php", html(pages.search_page("", logged_in=False)))
+    net.on("GET", "/forum/login.php", html(pages.LOGIN_FORM_CAPTCHA))
+    r = api.get("/api/rutracker/search", params={"q": "Хёка"})
+    assert r.status_code == 502 and "captcha" in r.json()["detail"]
+    assert not [c for c in net.calls if c.method == "POST"]  # never guesses a captcha
+
+
+def test_search_does_not_loop_when_relogin_does_not_stick(api, net):
+    logged_out = html(pages.search_page("", logged_in=False))
+    net.on("GET", "/forum/tracker.php", logged_out)
+    net.on("GET", "/forum/login.php", html(pages.LOGIN_FORM))
+    net.on("POST", "/forum/login.php", html(pages.INDEX_LOGGED_IN, cookies={"bb_session": "s"}))
+    r = api.get("/api/rutracker/search", params={"q": "Хёка"})
+    assert r.status_code == 502
+    assert sum(1 for c in net.calls if c.method == "POST") == 1
+
+
+def test_check_distinguishes_logged_out_from_unknown(api, net):
+    net.on("GET", "/forum/index.php", html(pages.LOGIN_FORM), html(pages.UNKNOWN, status=502))
+    r = api.post("/api/rutracker/check")
+    assert r.status_code == 200 and r.json()["logged_in"] is False, r.text
+    r = api.post("/api/rutracker/check")
+    assert r.status_code == 502 and "Unexpected" in r.json()["detail"]
+
+
+def test_login_unexpected_response(api, net):
+    net.on("GET", "/forum/login.php", html(pages.LOGIN_FORM))
+    net.on("POST", "/forum/login.php", html(pages.UNKNOWN, status=502))
+    r = api.post("/api/rutracker/login", json={})
+    assert r.status_code == 502 and "Unexpected page after login" in r.json()["detail"]
