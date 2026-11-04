@@ -1,13 +1,37 @@
 import { useQuery } from "@tanstack/react-query"
-import { ExternalLink, Search } from "lucide-react"
+import { Copy, Download, ExternalLink, Search } from "lucide-react"
 import { useState } from "react"
 import { useSearchParams } from "react-router"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { api, errorMessage, formatSize, type SearchView } from "@/lib/api"
+
+/** Results as JSON for building parser test data (no account details are part of results). */
+function exportJson(view: SearchView): string {
+  return JSON.stringify(
+    {
+      query: view.query,
+      exported_at: new Date().toISOString(),
+      results: view.results.map(({ topic_id, title, forum_id, forum, size, seeders, leechers, downloads, added }) => ({
+        topic_id,
+        title,
+        forum_id,
+        forum,
+        size,
+        seeders,
+        leechers,
+        downloads,
+        added,
+      })),
+    },
+    null,
+    2,
+  )
+}
 
 export function SearchPage() {
   const [params, setParams] = useSearchParams()
@@ -40,8 +64,34 @@ export function SearchPage() {
       {data && (
         <Card>
           <CardContent className="p-0">
-            <div className="text-muted-foreground px-4 pt-3 text-sm">
-              {data.results.length} results in {(data.took_ms / 1000).toFixed(1)} s
+            <div className="text-muted-foreground flex items-center gap-2 px-4 pt-3 text-sm">
+              <span className="mr-auto">
+                {data.results.length} results in {(data.took_ms / 1000).toFixed(1)} s
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  await navigator.clipboard.writeText(exportJson(data))
+                  toast.success(`Copied ${data.results.length} results as JSON`)
+                }}
+              >
+                <Copy /> Copy JSON
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  const blob = new Blob([exportJson(data)], { type: "application/json" })
+                  const a = document.createElement("a")
+                  a.href = URL.createObjectURL(blob)
+                  a.download = `rutracker-${data.query.replace(/[^\p{L}\p{N}]+/gu, "-").slice(0, 40) || "search"}.json`
+                  a.click()
+                  URL.revokeObjectURL(a.href)
+                }}
+              >
+                <Download /> Download
+              </Button>
             </div>
             <Table>
               <TableHeader>
