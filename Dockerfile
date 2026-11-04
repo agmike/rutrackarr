@@ -21,6 +21,7 @@ COPY backend/src ./src
 RUN uv sync --frozen --no-dev --no-editable
 
 FROM ${PYTHON_IMAGE} AS runtime
+ARG VERSION=dev
 LABEL org.opencontainers.image.title="rutrackarr" \
       org.opencontainers.image.description="Torznab indexer for RuTracker with language-aware ranking for Sonarr/Radarr" \
       org.opencontainers.image.source="https://github.com/agmike/rutrackarr" \
@@ -30,7 +31,8 @@ RUN groupadd --gid 65532 nonroot \
  && install -d -o 65532 -g 65532 -m 0750 /data
 COPY --from=build /app/.venv /app/.venv
 COPY --from=ui /ui/dist /app/static
-ENV PATH=/app/.venv/bin:$PATH \
+ENV RUTRACKARR_VERSION=${VERSION} \
+    PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     RUTRACKARR_DATA_DIR=/data \

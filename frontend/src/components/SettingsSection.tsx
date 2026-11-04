@@ -23,11 +23,13 @@ export function SettingsSection({
   description,
   fields,
   view,
+  children,
 }: {
   title: string
   description?: ReactNode
   fields: FieldSpec[]
   view: SettingsView
+  children?: ReactNode
 }) {
   const qc = useQueryClient()
   const initial = useMemo(
@@ -116,6 +118,7 @@ export function SettingsSection({
             )}
           </div>
         ))}
+        {children}
       </CardContent>
       <CardFooter className="justify-end gap-2">
         <Button

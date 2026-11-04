@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { ApiKeyCard } from "@/components/ApiKeyCard"
+import { FlareSolverrTest, RuTrackerSessionPanel } from "@/components/RuTrackerSessionPanel"
 import { type FieldSpec, SettingsSection } from "@/components/SettingsSection"
 import { api, type SettingsView } from "@/lib/api"
 
@@ -57,7 +58,9 @@ export function SettingsPage() {
   return (
     <div className="grid max-w-3xl gap-6">
       <section id="rutracker">
-        <SettingsSection title="RuTracker" description="Your RuTracker account." fields={rutracker} view={data} />
+        <SettingsSection title="RuTracker" description="Your RuTracker account." fields={rutracker} view={data}>
+          <RuTrackerSessionPanel />
+        </SettingsSection>
       </section>
       <section id="flaresolverr">
         <SettingsSection
@@ -65,7 +68,9 @@ export function SettingsPage() {
           description="Solves Cloudflare's browser check in front of RuTracker."
           fields={flaresolverr}
           view={data}
-        />
+        >
+          <FlareSolverrTest />
+        </SettingsSection>
       </section>
       <section id="metadata">
         <SettingsSection title="Metadata" fields={metadata} view={data} />

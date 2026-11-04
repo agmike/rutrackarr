@@ -5,7 +5,7 @@ import { createBrowserRouter, RouterProvider } from "react-router"
 import "./index.css"
 import App from "./App.tsx"
 import { routerBasename } from "./lib/basename"
-import { Placeholder } from "./pages/Placeholder"
+import { SearchPage } from "./pages/SearchPage"
 import { SettingsPage } from "./pages/SettingsPage"
 import { StatusPage } from "./pages/StatusPage"
 
@@ -19,10 +19,7 @@ const router = createBrowserRouter(
       element: <App />,
       children: [
         { index: true, element: <StatusPage /> },
-        {
-          path: "search",
-          element: <Placeholder title="Search" text="Raw RuTracker search arrives with the RuTracker client." />,
-        },
+        { path: "search", element: <SearchPage /> },
         { path: "settings", element: <SettingsPage /> },
       ],
     },

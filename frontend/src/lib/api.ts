@@ -46,3 +46,59 @@ export type SettingsView = {
 }
 
 export type ApiKeyView = { api_key: string; pinned: boolean }
+
+export type RuTrackerSession = {
+  configured: boolean
+  has_session: boolean
+  username: string | null
+  logged_in_at: string | null
+  last_ok_at: string | null
+  cf_solved_at: string | null
+  last_error: string | null
+  last_error_at: string | null
+}
+
+export type LoginResult = { status: "ok" | "captcha"; username: string | null; captcha_id: string | null }
+
+export type SearchResult = {
+  topic_id: number
+  title: string
+  forum_id: number | null
+  forum: string
+  size: number
+  seeders: number
+  leechers: number
+  downloads: number
+  added: string | null
+  author: string
+  approved: string | null
+  url: string
+}
+
+export type SearchView = { query: string; took_ms: number; results: SearchResult[] }
+
+/** Human-readable message from an API error. */
+export function errorMessage(err: unknown): string {
+  if (err instanceof ApiError) {
+    const d = err.detail
+    if (typeof d === "string") return d
+    return `HTTP ${err.status}`
+  }
+  return err instanceof Error ? err.message : String(err)
+}
+
+export function formatSize(bytes: number): string {
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  let v = bytes
+  let i = 0
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(i >= 3 ? 1 : 0)} ${units[i]}`
+}
+
+export function formatWhen(iso: string | null): string {
+  if (!iso) return "—"
+  return new Date(iso).toLocaleString()
+}
