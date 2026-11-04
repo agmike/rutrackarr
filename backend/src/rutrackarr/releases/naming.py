@@ -8,8 +8,9 @@ A RuTracker title is rewritten into a scene-style name Sonarr/Radarr parse relia
 - Name: the Latin name that best matches what was searched for (Sonarr matches it against the
   series' titles); season hints are removed from it, the season goes into SxxEyy.
 - Language words (JAPANESE, RUSSIAN, …) are for Sonarr/Radarr's own language detection.
-- CamelCase tokens (RusDub, OrigSubs, …) and the tier token RTA-T<n> are for custom formats;
-  they are single words so Sonarr's language parser doesn't read "RUS" out of them.
+- CamelCase tokens (RusDub, OrigSubs, EngVoice, …) and the tier token RTA-T<n> are for custom
+  formats; single words, so Sonarr's language parser doesn't read "RUS" out of them, and no
+  "dub" word of its own (TRaSH's anime "Dubs Only" format would score it -10000).
 """
 
 import re
@@ -138,7 +139,7 @@ def language_tokens(t: ParsedTitle, verdict: LanguageVerdict) -> list[str]:
     if None in voices and not voices - {None}:
         tokens.append("RusVoice")
     if any(a.lang == "eng" and not a.original and verdict.original != "eng" for a in t.audio):
-        tokens.append("EngDub")
+        tokens.append("EngVoice")  # not "EngDub": TRaSH's anime "Dubs Only" matches eng_?dub
     if "rus" in t.subs or t.subs_unknown:
         tokens.append("RusSubs")
     if "eng" in t.subs:

@@ -200,3 +200,31 @@ def test_download(api, net):  # noqa: F811
     r = api.get("/torznab/download/7", params={"apikey": key(api)})
     assert r.status_code == 200 and r.content == torrent
     assert r.headers["content-type"] == "application/x-bittorrent"
+
+
+def test_anime_absolute_searches_share_one_rutracker_query(api, net):  # noqa: F811
+    one_piece = (
+        "Большой Куш / One Piece / Ван-Пис [TV] [1156-1180 из 1000+] [RUS(ext), JAP+Sub] "
+        "[1999, WEB-DL] [1080p]"
+    )
+    rows = pages.row(1, one_piece, "Ван-Пис", forum_id=2544) + pages.row(
+        2, FRIEREN_S1, "Аниме (HD Video)"
+    )
+    net.on("GET", "/forum/tracker.php", html(pages.search_page(rows)))
+    k = key(api)
+    hit = items(api.get("/torznab/api", params={"t": "search", "q": "One Piece 1160", "apikey": k}))
+    miss = items(
+        api.get("/torznab/api", params={"t": "search", "q": "One Piece 1100", "apikey": k})
+    )
+    assert [i.findtext("title").split(" 1080p")[0] for i in hit] == ["One Piece - 1156-1180"]
+    assert miss == []
+    searches = [c for c in net.calls if c.url.path == "/forum/tracker.php"]
+    assert [c.url.params["nm"] for c in searches] == ["One%Piece"]
+
+
+def test_english_dub_token_avoids_trash_dubs_only():
+    t = name(
+        "Фрирен / Sousou no Frieren [TV] [28 из 28] [RUS(int), ENG, JAP+Sub] [2023, WEB-DL] [1080p]",
+        "Аниме (HD Video)",
+    )
+    assert "EngVoice" in t and "dub" not in t.lower().replace("rusdub", "")

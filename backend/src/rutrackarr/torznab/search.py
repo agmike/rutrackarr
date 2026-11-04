@@ -23,6 +23,7 @@ class Request:
     q: str = ""
     season: int | None = None
     ep: int | None = None
+    absolute: int | None = None  # anime absolute episode, from the end of a t=search query
     cats: list[int] = field(default_factory=list)
 
 
@@ -34,6 +35,15 @@ class Release:
     language: LanguageVerdict
     name: str
     categories: list[int]
+
+
+def absolute_episode(q: str) -> tuple[str, int | None]:
+    """Sonarr's anime searches (t=search) append the absolute episode: "Sousou no Frieren 01",
+    "One Piece 1156". Without stripping it every episode would be a separate RuTracker search.
+    Only numbers of two or more digits — "Taxi 4" stays as it is."""
+    if m := re.search(r"\s(\d{2,4})\s*$", q):
+        return q[: m.start()].strip(), int(m.group(1))
+    return q, None
 
 
 def clean_query(q: str) -> tuple[str, int | None]:
@@ -95,6 +105,9 @@ def _wanted(req: Request, rel: Release, year: int | None) -> bool:
     unchecked = e is None or e.complete or e.first is None or e.last is None
     if req.ep is not None and not unchecked and not (e.first <= req.ep <= e.last):  # type: ignore[union-attr,operator]
         return False
+    absolute = req.absolute is not None and is_absolute(t, rel.section) and not unchecked
+    if absolute and not (e.first <= req.absolute <= e.last):  # type: ignore[union-attr,operator]
+        return False
     return not (year and movie and t.year and abs(t.year - year) > 1)
 
 
@@ -114,6 +127,8 @@ def build(row: SearchRow, query: str | None) -> Release:
 
 async def run(cache: SearchCache, req: Request) -> list[Release]:
     q, year = clean_query(req.q)
+    if req.kind == "search" and req.absolute is None:
+        q, req.absolute = absolute_episode(q)
     rows = await cache.search(q)
     releases = [build(r, q) for r in rows]
     if q:
