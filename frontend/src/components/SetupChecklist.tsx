@@ -31,8 +31,8 @@ export function SetupChecklist({ settings }: { settings: SettingsView }) {
     },
     { id: "flaresolverr", label: "FlareSolverr", ok: !!v["flaresolverr.url"], optional: false, to: "settings#flaresolverr" },
     { id: "tmdb", label: "TMDb token", ok: sec["tmdb.read_access_token"], optional: false, to: "settings#metadata" },
-    { id: "sonarr", label: "Sonarr connection", ok: !!v["sonarr.url"] && sec["sonarr.api_key"], optional: true, to: "settings#arr" },
-    { id: "radarr", label: "Radarr connection", ok: !!v["radarr.url"] && sec["radarr.api_key"], optional: true, to: "settings#arr" },
+    { id: "sonarr", label: "Sonarr connection", ok: sec["sonarr.api_key"], optional: true, to: "settings#arr" },
+    { id: "radarr", label: "Radarr connection", ok: sec["radarr.api_key"], optional: true, to: "settings#arr" },
   ]
   const missing = items.filter((i) => !i.ok)
   const requiredMissing = missing.some((i) => !i.optional)

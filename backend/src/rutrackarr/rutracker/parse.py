@@ -30,6 +30,24 @@ class SearchRow:
     approved: str | None  # status icon title, e.g. "проверено"
 
 
+MAINTENANCE_MARKERS = ("временно отключен", "профилактическ")
+
+
+def maintenance_message(html: str) -> str | None:
+    """RuTracker's maintenance notice ("Форум временно отключен на профилактические работы…")."""
+    if not any(m in html.lower() for m in MAINTENANCE_MARKERS):
+        return None
+    if 'id="logged-in-username"' in html or 'id="tor-tbl"' in html:
+        return None  # a normal page that merely mentions the words (e.g. in a release title)
+    tree = HTMLParser(html)
+    for sel in ("h1", "h2", "h3", ".msg-main", "body"):
+        node = tree.css_first(sel)
+        text = _text(node)
+        if text and any(m in text.lower() for m in MAINTENANCE_MARKERS):
+            return text[:300]
+    return "RuTracker is temporarily unavailable"
+
+
 def logged_in_user(html: str) -> str | None:
     node = HTMLParser(html).css_first("#logged-in-username")
     return _text(node) or None if node else None

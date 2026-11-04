@@ -12,3 +12,7 @@ class CloudflareError(RuTrackerError):
 
 class LoginFailedError(RuTrackerError):
     pass
+
+
+class MaintenanceError(RuTrackerError):
+    """The site shows its maintenance page; nothing to do but wait (no re-login)."""

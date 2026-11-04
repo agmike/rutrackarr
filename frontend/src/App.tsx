@@ -41,7 +41,6 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
-        <p className="text-muted-foreground mt-auto px-2 text-xs">No built-in login — keep behind a reverse proxy.</p>
       </aside>
       <main className="flex-1 p-6">
         <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1>

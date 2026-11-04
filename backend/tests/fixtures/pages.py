@@ -53,3 +53,6 @@ ROW_SPLIT_TITLE = """<tr class="tCenter hl-tr"><td class="row1 t-ico"></td><td c
 <td class="row1 u-name-col"><a href="#">up</a></td>
 <td class="row4 tor-size" data-ts_text="1000"><a class="tr-dl" href="dl.php?t=6000001">1 KB</a></td>
 <td data-ts_text="5"><b class="seedmed">5</b></td><td class="leechmed">0</td><td>1</td><td data-ts_text="1700000000">x</td></tr>"""
+
+MAINTENANCE = """<html><head><title>rutracker.org</title></head><body>
+<div class="msg-main">Форум временно отключен на профилактические работы до 04:45 MSK</div></body></html>"""

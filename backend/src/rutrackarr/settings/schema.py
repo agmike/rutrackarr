@@ -26,9 +26,9 @@ FIELDS: dict[str, FieldDef] = {
     # Metadata (titles by ID)
     "tmdb.read_access_token": FieldDef("secret"),
     # Optional arr connections (lookups, history in the query log)
-    "sonarr.url": FieldDef("url", ""),
+    "sonarr.url": FieldDef("url", "http://sonarr:8989"),
     "sonarr.api_key": FieldDef("secret"),
-    "radarr.url": FieldDef("url", ""),
+    "radarr.url": FieldDef("url", "http://radarr:7878"),
     "radarr.api_key": FieldDef("secret"),
     # General
     "general.query_log_retention_days": FieldDef("int", 30, minimum=1, maximum=365),

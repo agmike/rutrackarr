@@ -35,3 +35,9 @@ def test_title_spacing_kept_across_markup():
         "Городская демонесса (ТВ-2) / Machikado Mazoku 2-Choume / The Demon Girl Next Door 2 "
         "[TV] [12 из 12] [JAP+Sub] [2022, Комедия, BDRemux] [1080p]"
     )
+
+
+def test_maintenance_detection():
+    assert "04:45" in parse.maintenance_message(pages.MAINTENANCE)
+    row = pages.ROW_HYOUKA.replace("Хёка / Hyouka", "Профилактические работы / Hyouka")
+    assert parse.maintenance_message(pages.search_page(row)) is None

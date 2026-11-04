@@ -8,7 +8,8 @@ from urllib.parse import urlencode, urljoin
 
 import httpx
 
-from rutrackarr.rutracker.errors import CloudflareError, RuTrackerError
+from rutrackarr.rutracker import parse
+from rutrackarr.rutracker.errors import CloudflareError, MaintenanceError, RuTrackerError
 from rutrackarr.rutracker.ratelimit import RequestSpacer
 from rutrackarr.rutracker.store import SessionStore
 
@@ -119,6 +120,7 @@ class RuTrackerHttp:
         if not is_cloudflare_challenge(resp):
             if resp.charset_encoding is None:
                 resp.encoding = ENCODING
+            self._raise_if_maintenance(resp)
             return resp
         log.info("Cloudflare challenge on %s — routing through FlareSolverr", path)
         self._via_fs_until = time.monotonic() + VIA_FLARESOLVERR_FOR
@@ -155,12 +157,21 @@ class RuTrackerHttp:
             user_agent=sol.get("userAgent") or state.user_agent,
             cf_solved_at=datetime.now(UTC),
         )
-        return httpx.Response(
+        resp = httpx.Response(
             int(sol.get("status") or 200),
             text=sol.get("response") or "",
             headers={"content-type": "text/html; charset=utf-8"},
             request=httpx.Request(method, url),
         )
+        self._raise_if_maintenance(resp)
+        return resp
+
+    @staticmethod
+    def _raise_if_maintenance(resp: httpx.Response) -> None:
+        if "html" not in resp.headers.get("content-type", ""):
+            return
+        if msg := parse.maintenance_message(resp.text):
+            raise MaintenanceError(f"RuTracker is down for maintenance: {msg}")
 
     async def fetch_absolute(self, url: str) -> httpx.Response:
         """GET an absolute URL (e.g. the captcha image) with the session's cookies and UA."""

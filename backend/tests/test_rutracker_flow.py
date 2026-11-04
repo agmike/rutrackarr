@@ -187,3 +187,11 @@ def test_search_relogs_in_once_when_session_expired(api, net):
 def test_not_configured(make_client):
     r = make_client().post("/api/rutracker/login", json={})
     assert r.status_code == 400
+
+
+def test_maintenance_page_no_relogin(api, net):
+    net.on("GET", "/forum/tracker.php", html(pages.MAINTENANCE, status=503))
+    r = api.get("/api/rutracker/search", params={"q": "Хёка"})
+    assert r.status_code == 502
+    assert "maintenance" in r.json()["detail"] and "04:45" in r.json()["detail"]
+    assert not [c for c in net.calls if c.url.path == "/forum/login.php"]  # no login attempt

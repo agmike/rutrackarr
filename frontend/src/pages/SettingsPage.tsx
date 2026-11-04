@@ -41,9 +41,9 @@ const metadata: FieldSpec[] = [
 ]
 
 const arr: FieldSpec[] = [
-  { key: "sonarr.url", label: "Sonarr URL", type: "url", placeholder: "http://sonarr:8989" },
+  { key: "sonarr.url", label: "Sonarr URL", type: "url" },
   { key: "sonarr.api_key", label: "Sonarr API key", type: "secret" },
-  { key: "radarr.url", label: "Radarr URL", type: "url", placeholder: "http://radarr:7878" },
+  { key: "radarr.url", label: "Radarr URL", type: "url" },
   { key: "radarr.api_key", label: "Radarr API key", type: "secret" },
 ]
 

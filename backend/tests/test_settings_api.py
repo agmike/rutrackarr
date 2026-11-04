@@ -5,6 +5,7 @@ def test_defaults_and_secret_masking(client):
     view = client.get("/api/settings").json()
     assert view["values"]["rutracker.base_url"] == "https://rutracker.org"
     assert view["values"]["rutracker.requests_per_minute"] == 10
+    assert view["values"]["sonarr.url"] == "http://sonarr:8989"
     assert view["secrets"]["rutracker.password"] is False
     assert "rutracker.password" not in view["values"]
 
