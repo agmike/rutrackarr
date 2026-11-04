@@ -25,7 +25,7 @@ export function StatusPage() {
       <Card>
         <CardHeader>
           <CardTitle>Service</CardTitle>
-          <CardDescription>rutrackarr backend</CardDescription>
+          <CardDescription>RuTrackarr backend</CardDescription>
         </CardHeader>
         <CardContent className="flex items-center gap-2 text-sm">
           {status.isPending && <span className="text-muted-foreground">checking…</span>}

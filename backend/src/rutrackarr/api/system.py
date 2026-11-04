@@ -14,4 +14,4 @@ async def health() -> dict[str, str]:
 
 @router.get("/system/status")
 async def status() -> dict[str, str]:
-    return {"app": "rutrackarr", "version": __version__}
+    return {"app": "RuTrackarr", "version": __version__}

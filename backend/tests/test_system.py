@@ -1,6 +1,6 @@
 def test_health_and_status(client):
     assert client.get("/api/health").json() == {"status": "ok"}
-    assert client.get("/api/system/status").json()["app"] == "rutrackarr"
+    assert client.get("/api/system/status").json()["app"] == "RuTrackarr"
 
 
 def test_url_base(make_client):

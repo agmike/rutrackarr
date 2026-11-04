@@ -21,7 +21,7 @@ export default function App() {
   return (
     <div className="flex min-h-svh bg-background text-foreground">
       <aside className="sticky top-0 flex h-svh w-56 shrink-0 flex-col border-r bg-sidebar p-3">
-        <div className="px-2 py-3 text-lg font-semibold tracking-tight">rutrackarr</div>
+        <div className="px-2 py-3 text-lg font-semibold tracking-tight">RuTrackarr</div>
         <Separator className="mb-2" />
         <nav className="flex flex-col gap-1">
           {nav.map(({ to, label, icon: Icon, end }) => (

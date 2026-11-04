@@ -18,7 +18,7 @@ def create_app(settings: BootstrapSettings | None = None) -> FastAPI:
     base = settings.normalized_url_base
 
     app = FastAPI(
-        title="rutrackarr",
+        title="RuTrackarr",
         version=__version__,
         docs_url=f"{base}/api/docs",
         openapi_url=f"{base}/api/openapi.json",

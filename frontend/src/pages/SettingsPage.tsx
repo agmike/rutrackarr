@@ -16,7 +16,7 @@ const rutracker: FieldSpec[] = [
     key: "rutracker.requests_per_minute",
     label: "Max requests per minute",
     type: "number",
-    help: "Keep this low — bursts of requests can trigger a login captcha.",
+    help: "Limit for all requests to RuTracker — searches, downloads and logins. Sonarr can send many searches at once; keeping this low avoids throttling and extra Cloudflare checks. (Login captchas mostly come from repeated logins, which RuTrackarr avoids by keeping its session.)",
   },
 ]
 

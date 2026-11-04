@@ -1,4 +1,4 @@
-# rutrackarr
+# RuTrackarr
 
 A Torznab indexer for [RuTracker](https://rutracker.org) built for Sonarr and Radarr,
 with language-aware release ranking.
@@ -18,7 +18,7 @@ with language-aware release ranking.
 
 Prowlarr and Jackett shape RuTracker results for Sonarr's limits — Prowlarr, for example,
 removes subtitle information from release titles, because Sonarr would mistake subtitle
-languages for audio languages. rutrackarr instead works from the raw RuTracker titles:
+languages for audio languages. RuTrackarr instead works from the raw RuTracker titles:
 
 - searches RuTracker by **series/movie IDs**, using the Russian, original and English titles;
 - parses each release into audio tracks (dub / multi-voice / single-voice, studio), original
@@ -40,7 +40,7 @@ to pass Cloudflare's browser check.
 
 ## Security
 
-**rutrackarr has no built-in login.** Anyone who can reach its web UI can read and change
+**RuTrackarr has no built-in login.** Anyone who can reach its web UI can read and change
 its settings (stored secrets are never shown, but they can be replaced). Do not expose it
 directly to the internet: keep it on a private network, or put it behind a reverse proxy
 that does authentication (for example an SSO/forward-auth proxy). The Torznab endpoint used
