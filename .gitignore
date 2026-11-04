@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+dist/
+*.egg-info/
+# Node
+node_modules/
+frontend/dist/
+# Local data / secrets — never commit
+/data/
+*.db
+*.sqlite*
+*.torrent
+.env
+# Raw captured tracker pages (contain account details); scrubbed fixtures live in backend/tests/fixtures
+fixtures/raw/
