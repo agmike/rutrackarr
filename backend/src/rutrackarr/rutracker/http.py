@@ -1,6 +1,7 @@
 """HTTP session for RuTracker: cookies, User-Agent, cp1251, Cloudflare via FlareSolverr."""
 
 import logging
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from urllib.parse import urlencode, urljoin
@@ -14,6 +15,8 @@ from rutrackarr.rutracker.store import SessionStore
 log = logging.getLogger(__name__)
 
 ENCODING = "cp1251"
+# After a challenge, keep going through FlareSolverr for this long (seconds).
+VIA_FLARESOLVERR_FOR = 30 * 60
 DEFAULT_UA = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) "
     "Chrome/141.0.0.0 Safari/537.36"
@@ -58,6 +61,7 @@ class RuTrackerHttp:
         self._fs_timeout = flaresolverr_timeout
         self._spacer = spacer
         self._transport = transport
+        self._via_fs_until = 0.0
 
     def url(self, path: str) -> str:
         return urljoin(self._base_url().rstrip("/") + "/", path.lstrip("/"))
@@ -82,67 +86,80 @@ class RuTrackerHttp:
         params: dict[str, str] | None = None,
         form: dict[str, str] | None = None,
     ) -> httpx.Response:
-        """One request with the stored session; solves a Cloudflare challenge once."""
+        """One request with the stored session.
+
+        Goes direct first; when Cloudflare challenges it, the request is repeated
+        through FlareSolverr (its intended use: a browser fetches the page for us),
+        and further requests go through FlareSolverr for VIA_FLARESOLVERR_FOR seconds.
+        """
         url = self.url(path)
         if params:
             url = f"{url}?{encode_query(params)}"
-        for attempt in (1, 2):
-            state = self._store.load()
-            await self._spacer.wait()
-            async with self._client(state.cookies, state.user_agent) as client:
-                try:
-                    if form is not None:
-                        resp = await client.request(
-                            method,
-                            url,
-                            content=encode_form(form),
-                            headers={"Content-Type": "application/x-www-form-urlencoded"},
-                        )
-                    else:
-                        resp = await client.request(method, url)
-                except httpx.HTTPError as e:
-                    raise RuTrackerError(f"RuTracker unreachable: {e}") from e
-                # Keep cookies the site set (session, cf_clearance refreshes).
-                merged = {**state.cookies, **{c.name: c.value for c in client.cookies.jar}}
-                if merged != state.cookies:
-                    self._store.update(cookies=merged)
-            if not is_cloudflare_challenge(resp):
-                if resp.encoding is None or resp.charset_encoding is None:
-                    resp.encoding = ENCODING
-                return resp
-            if attempt == 2:
-                raise CloudflareError("Cloudflare challenge persists after FlareSolverr")
-            log.info("Cloudflare challenge on %s — asking FlareSolverr", path)
-            await self.solve_cloudflare()
-        raise AssertionError("unreachable")
+        if time.monotonic() < self._via_fs_until:
+            return await self._via_flaresolverr(method, url, form)
+        state = self._store.load()
+        await self._spacer.wait()
+        async with self._client(state.cookies, state.user_agent) as client:
+            try:
+                if form is not None:
+                    resp = await client.request(
+                        method,
+                        url,
+                        content=encode_form(form),
+                        headers={"Content-Type": "application/x-www-form-urlencoded"},
+                    )
+                else:
+                    resp = await client.request(method, url)
+            except httpx.HTTPError as e:
+                raise RuTrackerError(f"RuTracker unreachable: {e}") from e
+            # Keep cookies the site set (session, cf_clearance refreshes).
+            merged = {**state.cookies, **{c.name: c.value for c in client.cookies.jar}}
+            if merged != state.cookies:
+                self._store.update(cookies=merged)
+        if not is_cloudflare_challenge(resp):
+            if resp.charset_encoding is None:
+                resp.encoding = ENCODING
+            return resp
+        log.info("Cloudflare challenge on %s — routing through FlareSolverr", path)
+        self._via_fs_until = time.monotonic() + VIA_FLARESOLVERR_FOR
+        return await self._via_flaresolverr(method, url, form)
 
-    async def solve_cloudflare(self) -> None:
-        """Have FlareSolverr pass the browser check; keep its cookies and User-Agent."""
-        fs = self._fs_url().rstrip("/") + "/v1"
+    async def _via_flaresolverr(
+        self, method: str, url: str, form: dict[str, str] | None
+    ) -> httpx.Response:
+        """Fetch a page through FlareSolverr's browser, carrying our session cookies."""
+        state = self._store.load()
         timeout = self._fs_timeout()
+        payload: dict[str, object] = {
+            "cmd": "request.post" if form is not None else "request.get",
+            "url": url,
+            "maxTimeout": timeout * 1000,
+            "cookies": [{"name": k, "value": v} for k, v in state.cookies.items()],
+        }
+        if form is not None:
+            # FlareSolverr builds and submits the form in the browser (UTF-8).
+            payload["postData"] = urlencode(form)
         await self._spacer.wait()
         try:
             async with httpx.AsyncClient(timeout=timeout + 15, transport=self._transport) as c:
-                r = await c.post(
-                    fs,
-                    json={
-                        "cmd": "request.get",
-                        "url": self.url("forum/index.php"),
-                        "maxTimeout": timeout * 1000,
-                    },
-                )
+                r = await c.post(self._fs_url().rstrip("/") + "/v1", json=payload)
         except httpx.HTTPError as e:
             raise CloudflareError(f"FlareSolverr unreachable: {e}") from e
-        data = r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
+        data = r.json() if "json" in r.headers.get("content-type", "") else {}
         if data.get("status") != "ok":
             raise CloudflareError(f"FlareSolverr failed: {data.get('message') or r.status_code}")
-        sol = data["solution"]
-        state = self._store.load()
+        sol = data.get("solution") or {}
         cookies = {**state.cookies, **{c["name"]: c["value"] for c in sol.get("cookies", [])}}
         self._store.update(
             cookies=cookies,
             user_agent=sol.get("userAgent") or state.user_agent,
             cf_solved_at=datetime.now(UTC),
+        )
+        return httpx.Response(
+            int(sol.get("status") or 200),
+            text=sol.get("response") or "",
+            headers={"content-type": "text/html; charset=utf-8"},
+            request=httpx.Request(method, url),
         )
 
     async def fetch_absolute(self, url: str) -> httpx.Response:

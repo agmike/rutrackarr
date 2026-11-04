@@ -78,8 +78,7 @@ def test_login_ok_persists_encrypted_session(api, net, tmp_path):
     form = parse_qs(post.content.decode("ascii"), encoding="cp1251")
     assert form["login_username"] == ["tester"]
     assert form["login_password"] == ["p&#228;ssword"]  # like a browser on a cp1251 form
-    assert form["login"] == ["вход"]
-    assert "%E2%F5%EE%E4" in post.content.decode("ascii")  # "вход" in windows-1251
+    assert form["login"] == ["Login"]
     session = api.get("/api/rutracker/session").json()
     assert session["has_session"] and session["username"] == "tester"
     raw = (tmp_path / "data" / "rutrackarr.db").read_bytes()
@@ -115,29 +114,55 @@ def test_login_wrong_password(api, net):
     assert "неверный пароль" in api.get("/api/rutracker/session").json()["last_error"]
 
 
-def test_cloudflare_challenge_solved_via_flaresolverr(api, net):
+def fs_ok(html_text: str, cookies: dict[str, str] | None = None, ua: str = "SolverUA/1.0"):
+    return httpx.Response(
+        200,
+        json={
+            "status": "ok",
+            "solution": {
+                "status": 200,
+                "response": html_text,
+                "userAgent": ua,
+                "cookies": [{"name": k, "value": v} for k, v in (cookies or {}).items()],
+            },
+        },
+    )
+
+
+def test_cloudflare_challenge_routes_through_flaresolverr(api, net):
     challenge = httpx.Response(
         403,
         text="<title>Just a moment...</title>",
         headers={"cf-mitigated": "challenge", "server": "cloudflare"},
     )
-    net.on("GET", "/forum/login.php", challenge, html(pages.LOGIN_FORM))
-    solution = {
-        "status": "ok",
-        "solution": {
-            "userAgent": "SolverUA/1.0",
-            "cookies": [{"name": "cf_clearance", "value": "CLEAR"}],
-        },
-    }
-    net.on("POST", "/v1", httpx.Response(200, json=solution))
-    net.on("POST", "/forum/login.php", html(pages.INDEX_LOGGED_IN, cookies={"bb_session": "s"}))
+    net.on("GET", "/forum/login.php", challenge)
+    net.on(
+        "POST",
+        "/v1",
+        fs_ok(pages.LOGIN_FORM, {"cf_clearance": "CLEAR"}),
+        fs_ok(pages.INDEX_LOGGED_IN, {"bb_session": "0-1-s"}),
+    )
     assert api.post("/api/rutracker/login", json={}).json()["status"] == "ok"
-    retried = [c for c in net.calls if c.url.path == "/forum/login.php"][1]
-    assert "cf_clearance=CLEAR" in retried.headers.get("cookie", "")
-    assert retried.headers["user-agent"] == "SolverUA/1.0"
-    fs = next(c for c in net.calls if c.url.path == "/v1")
-    assert json.loads(fs.content)["cmd"] == "request.get"
-    assert api.get("/api/rutracker/session").json()["cf_solved_at"] is not None
+    fs_calls = [json.loads(c.content) for c in net.calls if c.url.path == "/v1"]
+    assert [c["cmd"] for c in fs_calls] == ["request.get", "request.post"]
+    assert fs_calls[0]["url"].endswith("/forum/login.php")
+    post = fs_calls[1]
+    assert parse_qs(post["postData"])["login_username"] == ["tester"]
+    assert {"name": "cf_clearance", "value": "CLEAR"} in post["cookies"]
+    # the login POST went through FlareSolverr, not direct
+    assert not [c for c in net.calls if c.method == "POST" and c.url.path == "/forum/login.php"]
+    session = api.get("/api/rutracker/session").json()
+    assert session["has_session"] and session["username"] == "tester"
+    assert session["cf_solved_at"] is not None
+
+
+def test_flaresolverr_failure_is_recorded(api, net):
+    challenge = httpx.Response(403, text="x", headers={"cf-mitigated": "challenge"})
+    net.on("GET", "/forum/login.php", challenge)
+    net.on("POST", "/v1", httpx.Response(500, json={"status": "error", "message": "timeout"}))
+    r = api.post("/api/rutracker/login", json={})
+    assert r.status_code == 502 and "timeout" in r.json()["detail"]
+    assert "timeout" in api.get("/api/rutracker/session").json()["last_error"]
 
 
 def test_search_relogs_in_once_when_session_expired(api, net):

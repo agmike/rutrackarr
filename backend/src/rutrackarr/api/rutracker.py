@@ -17,7 +17,10 @@ def _client(request: Request) -> RuTrackerClient:
     return request.app.state.rutracker
 
 
-def _fail(e: RuTrackerError) -> HTTPException:
+def _fail(e: RuTrackerError, request: Request | None = None) -> HTTPException:
+    """HTTP error for the UI; RuTracker/Cloudflare failures are also kept as `last_error`."""
+    if request is not None and not isinstance(e, NotConfiguredError):
+        request.app.state.rutracker_store.record_error(str(e))
     return HTTPException(
         status_code=400 if isinstance(e, NotConfiguredError) else 502, detail=str(e)
     )
@@ -87,7 +90,7 @@ async def login(body: LoginRequest, request: Request) -> dict[str, Any]:
     try:
         r = await _client(request).login(body.captcha_id, body.captcha_code)
     except RuTrackerError as e:
-        raise _fail(e) from None
+        raise _fail(e, request) from None
     return {"status": r.status, "username": r.username, "captcha_id": r.captcha_id}
 
 
@@ -96,7 +99,7 @@ async def check(request: Request) -> dict[str, Any]:
     try:
         user = await _client(request).check()
     except RuTrackerError as e:
-        raise _fail(e) from None
+        raise _fail(e, request) from None
     return {"logged_in": user is not None, "username": user}
 
 
@@ -123,7 +126,7 @@ async def search(request: Request, q: str = "", f: str = "") -> dict[str, Any]:
     try:
         rows = await client.search(q, forums)
     except RuTrackerError as e:
-        raise _fail(e) from None
+        raise _fail(e, request) from None
     return {
         "query": q,
         "took_ms": int((time.monotonic() - start) * 1000),

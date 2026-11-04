@@ -64,7 +64,8 @@ class RuTrackerClient:
         username, password = self._credentials()
         if not username or not password:
             raise NotConfiguredError("RuTracker username and password are not set")
-        form = {"login_username": username, "login_password": password, "login": "вход"}
+        # ASCII button value (as Jackett): FlareSolverr submits forms as UTF-8.
+        form = {"login_username": username, "login_password": password, "login": "Login"}
         if captcha_id:
             ch = self.captcha(captcha_id)
             if ch is None:

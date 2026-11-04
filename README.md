@@ -36,7 +36,10 @@ Configuration is done in the web UI (default port `8787`). Optional environment 
 
 You need your own RuTracker account; please respect the tracker's rules and keep request
 rates low. A [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) instance is used
-to pass Cloudflare's browser check.
+the way it is intended: when Cloudflare challenges a request, RuTrackarr has FlareSolverr's
+browser fetch that page instead (and keeps doing so for a while). Note: through FlareSolverr
+the login form is submitted as UTF-8, so a RuTracker username or password with non-Latin
+characters may not work while requests go through FlareSolverr.
 
 ## Security
 
