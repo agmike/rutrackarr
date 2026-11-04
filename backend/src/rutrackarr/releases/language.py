@@ -52,6 +52,9 @@ def assess(t: ParsedTitle, section: Section) -> LanguageVerdict:
             ORIGINAL_SUBS, label, 100 + (0 if en_subs else 1), "rus", en_subs, notes
         )
 
+    if t.audio and all(a.lang == "zxx" for a in t.audio):
+        return LanguageVerdict(ORIGINAL_SUBS, "No dialogue", 100, "zxx", en_subs, notes)
+
     if not (t.audio or t.subs or t.subs_unknown):
         return LanguageVerdict(UNKNOWN, "Not in title", 900, notes=["check the topic page"])
 

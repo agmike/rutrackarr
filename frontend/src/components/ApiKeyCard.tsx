@@ -31,8 +31,16 @@ export function ApiKeyCard() {
         <CardTitle className="flex items-center gap-2">
           Torznab API key {data?.pinned && <Badge variant="secondary">set by environment</Badge>}
         </CardTitle>
-        <CardDescription>
-          Sonarr and Radarr use this key to query rutrackarr. Torznab URL: <code>{new URL("torznab/api", document.baseURI).href}</code>
+        <CardDescription className="grid gap-1">
+          <span>
+            Sonarr and Radarr use this key. Add RuTrackarr there as a <b>Torznab</b> indexer: URL{" "}
+            <code>{new URL("torznab", document.baseURI).href}</code>, API Path <code>/api</code>.
+          </span>
+          <span>
+            Use the address Sonarr/Radarr reach RuTrackarr on directly (e.g.{" "}
+            <code>http://rutrackarr:8787{new URL("torznab", document.baseURI).pathname}</code>), not one behind a login
+            page.
+          </span>
         </CardDescription>
       </CardHeader>
       <CardContent className="flex flex-wrap gap-2">

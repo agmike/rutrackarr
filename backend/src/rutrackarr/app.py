@@ -10,6 +10,7 @@ from rutrackarr.api import arr as arr_api
 from rutrackarr.api import rutracker as rutracker_api
 from rutrackarr.api import settings as settings_api
 from rutrackarr.api import system
+from rutrackarr.api import torznab as torznab_api
 from rutrackarr.config import BootstrapSettings
 from rutrackarr.crypto import SecretBox
 from rutrackarr.db.engine import make_engine, make_sessionmaker, migrate
@@ -18,6 +19,7 @@ from rutrackarr.rutracker.http import RuTrackerHttp
 from rutrackarr.rutracker.ratelimit import RequestSpacer
 from rutrackarr.rutracker.store import SessionStore
 from rutrackarr.settings.service import SettingsService
+from rutrackarr.torznab.search import SearchCache
 
 
 def create_app(
@@ -60,6 +62,9 @@ def create_app(
         http, store, lambda: (svc.get("rutracker.username"), svc.get("rutracker.password"))
     )
 
+    app.state.torznab_cache = SearchCache(app.state.rutracker)
+
+    app.include_router(torznab_api.router, prefix=f"{base}/torznab")
     app.include_router(system.router, prefix=f"{base}/api")
     app.include_router(settings_api.router, prefix=f"{base}/api")
     app.include_router(rutracker_api.router, prefix=f"{base}/api")
@@ -75,7 +80,7 @@ def create_app(
 
         @app.get(f"{base}/{{path:path}}", include_in_schema=False, response_model=None)
         async def spa(path: str) -> FileResponse | HTMLResponse:
-            if path.startswith("api/"):
+            if path.startswith(("api/", "torznab/")):
                 return HTMLResponse("Not Found", status_code=404)
             candidate = (static / path).resolve()
             if path and candidate.is_file() and static.resolve() in candidate.parents:

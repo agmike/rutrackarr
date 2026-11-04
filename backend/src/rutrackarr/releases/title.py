@@ -54,6 +54,7 @@ _LANGS = {
     "lit": "lit",
     "uzb": "uzb",
     "aze": "aze",
+    "zxx": "zxx",  # no linguistic content (films without dialogue)
 }
 _VOICES = ("dub", "mvo", "dvo", "avo", "vo")
 

@@ -64,3 +64,15 @@ MAINTENANCE = """<html><head><title>rutracker.org</title></head><body>
 
 UNKNOWN = """<html><head><title>502 Bad Gateway</title></head>
 <body><center><h1>502 Bad Gateway</h1></center><hr><center>nginx</center></body></html>"""
+
+
+def row(topic_id: int, title: str, forum: str, forum_id: int = 1105, seeders: int = 5) -> str:
+    """A search result row with any title (same markup as ROW_HYOUKA)."""
+    return f"""<tr class="tCenter hl-tr" data-topic_id="{topic_id}">
+<td class="row1 t-ico"></td><td class="row1 t-ico"></td>
+<td class="row1 f-name-col"><div class="f-name"><a class="gen f" href="tracker.php?f={forum_id}">{forum}</a></div></td>
+<td class="row4 t-title-col"><div class="t-title"><a class="tLink" href="viewtopic.php?t={topic_id}">{title}</a></div></td>
+<td class="row1 u-name-col"><a href="#">up</a></td>
+<td class="row4 tor-size" data-ts_text="1073741824"><a class="tr-dl" href="dl.php?t={topic_id}">1 GB</a></td>
+<td data-ts_text="{seeders}"><b class="seedmed">{seeders}</b></td><td class="leechmed">1</td><td>10</td>
+<td data-ts_text="1700000000">x</td></tr>"""

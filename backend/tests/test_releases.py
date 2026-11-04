@@ -234,3 +234,15 @@ def test_language_tiers():
     assert (v.label, v.en_subs) == ("Original (Russian) + EN subs", True)
     v = assess(parse_title("Ф / F (Р / D) [2014, США, BDRip]"), film)
     assert (v.tier, v.label) == (UNKNOWN, "Not in title")
+
+
+def test_no_dialogue():
+    t = parse_title(
+        "История одной улицы / Aru Machi Kado (Machikado) no Monogatari / Tales of the Street Corner / "
+        "Tale of a Street Corner / Story of a Street Corner / Osamu Tezuka Works: The Experimental Films "
+        "[Movie] [ZXX] [1962, драма, романтика, BDRip] [720p]"
+    )
+    assert langs(t) == [("zxx", None, False, 1)] and t.kinds == ["Movie"]
+    assert t.names[1] == "Aru Machi Kado (Machikado) no Monogatari"
+    v = assess(t, classify("Аниме (HD Video)"))
+    assert (v.tier, v.label) == (ORIGINAL_SUBS, "No dialogue")

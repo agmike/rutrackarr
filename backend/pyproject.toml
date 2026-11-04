@@ -48,6 +48,7 @@ ignore = ["S101", "RUF001", "RUF002", "RUF003"]
 "tests/**" = ["S"]
 "tests/fixtures/**" = ["E501"]  # verbatim HTML rows
 "tests/test_releases.py" = ["E501"]  # verbatim RuTracker titles
+"tests/test_torznab.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

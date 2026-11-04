@@ -1,0 +1,159 @@
+"""Release names and categories for Sonarr/Radarr.
+
+A RuTracker title is rewritten into a scene-style name Sonarr/Radarr parse reliably:
+
+    <Name> <S02 | S02E01-E08 | - 1156-1180 | 2014> <1080p> <BluRay> <h264> <HDR>
+        <JAPANESE RUSSIAN> <OrigSubs | RusDub …> <RTA-T1> -RuTracker
+
+- Name: the Latin name that best matches what was searched for (Sonarr matches it against the
+  series' titles); season hints are removed from it, the season goes into SxxEyy.
+- Language words (JAPANESE, RUSSIAN, …) are for Sonarr/Radarr's own language detection.
+- CamelCase tokens (RusDub, OrigSubs, …) and the tier token RTA-T<n> are for custom formats;
+  they are single words so Sonarr's language parser doesn't read "RUS" out of them.
+"""
+
+import re
+
+from rutrackarr.releases.language import LanguageVerdict
+from rutrackarr.releases.sections import Section
+from rutrackarr.releases.title import ParsedTitle
+
+_SOURCE = {
+    "BDRemux": "BluRay REMUX",
+    "Blu-ray": "COMPLETE BLURAY",
+    "BDRip": "BluRay",
+    "HD-DVD": "HDDVD",
+    "WEB-DL": "WEB-DL",
+    "WEBRip": "WEBRip",
+    "HDTV": "HDTV",
+    "HDTVRip": "HDTV",
+    "DVD": "DVD",
+    "DVDRemux": "DVD REMUX",
+    "DVDRip": "DVDRip",
+    "HDRip": "HDRip",
+    "DMRip": "WEBRip",
+    "TVRip": "TVRip",
+    "VHSRip": "VHSRip",
+    "LDRip": "LDRip",
+    "CAMRip": "CAM",
+    "Hybrid": "Hybrid",
+}
+_CODEC = {"AVC": "h264", "HEVC": "h265"}
+_HDR = {
+    "HDR10": "HDR10",
+    "HDR10+": "HDR10Plus",
+    "Dolby Vision": "DV",
+    "Dolby Vision TV": "DV",
+    "HLG": "HLG",
+}
+_LANG_WORD = {
+    "rus": "RUSSIAN",
+    "eng": "ENGLISH",
+    "jpn": "JAPANESE",
+    "kor": "KOREAN",
+    "chi": "CHINESE",
+    "ukr": "UKRAINIAN",
+    "deu": "GERMAN",
+    "fra": "FRENCH",
+    "ita": "ITALIAN",
+    "spa": "SPANISH",
+}
+_VOICE_TOKEN = {"dub": "RusDub", "mvo": "RusMVO", "dvo": "RusDVO", "avo": "RusAVO", "vo": "RusVO"}
+_SEASON_HINTS = re.compile(
+    r"\s*\b(?:season\s*\d+|\d+(?:st|nd|rd|th)\s+season|сезон\s*\d+)\b|\s*\((?:ТВ|TV)-?\d*\)", re.I
+)
+_LATIN = re.compile(r"[A-Za-z]")
+_CYRILLIC = re.compile(r"[А-Яа-яЁё]")
+_WORD = re.compile(r"[^\W_]+")
+
+
+def is_movie(section: Section, t: ParsedTitle) -> bool:
+    return section.kind == "movie" or (section.kind == "anime" and "Movie" in t.kinds)
+
+
+def categories(section: Section, t: ParsedTitle) -> list[int]:
+    """Newznab categories: Movies 2000 (SD 2030, HD 2040, UHD 2045), TV 5000 (SD 5030, HD 5040,
+    UHD 5045, Anime 5070)."""
+    uhd = t.uhd or t.resolution == "2160p"
+    hd = t.resolution in ("720p", "810p", "960p", "1080p", "1080i", "1440p")
+    if is_movie(section, t):
+        return [2000, 2045 if uhd else 2040 if hd else 2030]
+    cats = [5000, 5045 if uhd else 5040 if hd else 5030]
+    if section.kind == "anime":
+        cats.append(5070)
+    return cats
+
+
+def pick_name(t: ParsedTitle, query: str | None) -> str:
+    """The name to publish: Latin names first, the one sharing most words with the query."""
+    names = [_SEASON_HINTS.sub("", n).strip(" .,:-") for n in t.names] or [t.raw]
+    latin = [n for n in names if _LATIN.search(n) and not _CYRILLIC.search(n)]
+    pool = latin or names
+    if not query:
+        return pool[0]
+    wanted = {w.lower() for w in _WORD.findall(query)}
+    return max(pool, key=lambda n: len(wanted & {w.lower() for w in _WORD.findall(n)}))
+
+
+def is_absolute(t: ParsedTitle, section: Section) -> bool:
+    """Long-running anime without seasons (One Piece 1156-1180): absolute episode numbers."""
+    e = t.episodes
+    if section.kind != "anime" or t.season is not None or e is None:
+        return False
+    return (e.first or 1) > 1 and (e.total is None or (e.last or 0) > 100)
+
+
+def numbering(t: ParsedTitle, section: Section) -> str:
+    """S02 / S02E01-E08 / S01E08 for series, "- 1156-1180" for long anime, the year for movies."""
+    if is_movie(section, t):
+        return str(t.year) if t.year else ""
+    e = t.episodes
+    if is_absolute(t, section) and e:
+        return f"- {e.first:03d}" if e.first == e.last else f"- {e.first:03d}-{e.last:03d}"
+    season = f"S{t.season or 1:02d}"
+    if t.season_last:
+        return f"S{t.season:02d}-S{t.season_last:02d}"
+    if e is None or e.complete or e.first is None or e.last is None:
+        return season
+    if e.first == e.last:
+        return f"{season}E{e.first:02d}"
+    return f"{season}E{e.first:02d}-E{e.last:02d}"
+
+
+def language_tokens(t: ParsedTitle, verdict: LanguageVerdict) -> list[str]:
+    words: list[str] = []
+    for code in [verdict.original, *(a.lang for a in t.audio)]:
+        word = _LANG_WORD.get(code or "")
+        if word and word not in words:
+            words.append(word)
+    tokens: list[str] = []
+    if verdict.label == "No dialogue":
+        tokens.append("NoDialogue")
+    elif verdict.tier == 1 and verdict.original != "rus":
+        tokens.append("OrigSubs")
+    voices = {a.voice for a in t.audio if a.lang == "rus" and not a.original}
+    for voice in ("dub", "mvo", "dvo", "avo", "vo"):
+        if voice in voices:
+            tokens.append(_VOICE_TOKEN[voice])
+    if None in voices and not voices - {None}:
+        tokens.append("RusVoice")
+    if any(a.lang == "eng" and not a.original and verdict.original != "eng" for a in t.audio):
+        tokens.append("EngDub")
+    if "rus" in t.subs or t.subs_unknown:
+        tokens.append("RusSubs")
+    if "eng" in t.subs:
+        tokens.append("EngSubs")
+    return [*words, *tokens, f"RTA-T{verdict.tier}"]
+
+
+def release_name(
+    t: ParsedTitle, section: Section, verdict: LanguageVerdict, query: str | None
+) -> str:
+    parts = [pick_name(t, query), numbering(t, section)]
+    resolution = t.resolution or ("2160p" if t.uhd else None)
+    parts += [resolution or "", _SOURCE.get(t.source or "", t.source or "")]
+    parts.append(_CODEC.get(t.codec or "", ""))
+    parts += [_HDR[h] for h in t.hdr if h in _HDR]
+    parts += language_tokens(t, verdict)
+    name = " ".join(p for p in parts if p)
+    return f"{' '.join(name.split())} -RuTracker"
