@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { ApiKeyCard } from "@/components/ApiKeyCard"
-import { FlareSolverrTest, RuTrackerSessionPanel } from "@/components/RuTrackerSessionPanel"
+import { ArrConnectionTests, FlareSolverrTest, RuTrackerSessionPanel } from "@/components/RuTrackerSessionPanel"
 import { type FieldSpec, SettingsSection } from "@/components/SettingsSection"
 import { api, type SettingsView } from "@/lib/api"
 
@@ -81,10 +81,12 @@ export function SettingsPage() {
       <section id="arr">
         <SettingsSection
           title="Sonarr & Radarr"
-          description="Optional. Used for series/movie lookups and to show what Sonarr/Radarr grabbed."
+          description="Optional. Used for series/movie lookups and to show what Sonarr/Radarr grabbed. Include the URL base, e.g. http://sonarr:8989/sonarr."
           fields={arr}
           view={data}
-        />
+        >
+          <ArrConnectionTests />
+        </SettingsSection>
       </section>
       <section id="general">
         <SettingsSection title="General" fields={general} view={data} />

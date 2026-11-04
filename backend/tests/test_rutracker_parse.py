@@ -27,3 +27,11 @@ def test_login_state_captcha_error():
     assert ch and ch.sid == "SID123" and ch.code_field == "cap_code_deadbeef"
     assert parse.captcha(pages.LOGIN_FORM) is None
     assert parse.login_error(pages.LOGIN_WRONG) == "неверный пароль"
+
+
+def test_title_spacing_kept_across_markup():
+    (row,) = parse.search_rows(pages.search_page(pages.ROW_SPLIT_TITLE))
+    assert row.title == (
+        "Городская демонесса (ТВ-2) / Machikado Mazoku 2-Choume / The Demon Girl Next Door 2 "
+        "[TV] [12 из 12] [JAP+Sub] [2022, Комедия, BDRemux] [1080p]"
+    )

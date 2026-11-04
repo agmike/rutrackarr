@@ -116,3 +116,20 @@ export function FlareSolverrTest() {
     </div>
   )
 }
+
+export function ArrConnectionTests() {
+  const test = useMutation({
+    mutationFn: (app: "sonarr" | "radarr") => api.post<{ app: string; version: string }>(`arr/${app}/test`),
+    onSuccess: (r) => toast.success(`${r.app} reachable (version ${r.version})`),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <div className="flex gap-2">
+      {(["sonarr", "radarr"] as const).map((app) => (
+        <Button key={app} variant="outline" disabled={test.isPending} onClick={() => test.mutate(app)}>
+          Test {app === "sonarr" ? "Sonarr" : "Radarr"}
+        </Button>
+      ))}
+    </div>
+  )
+}

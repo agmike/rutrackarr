@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from rutrackarr import __version__
+from rutrackarr.api import arr as arr_api
 from rutrackarr.api import rutracker as rutracker_api
 from rutrackarr.api import settings as settings_api
 from rutrackarr.api import system
@@ -34,6 +35,7 @@ def create_app(
         redoc_url=None,
     )
     app.state.settings = settings
+    app.state.http_transport = transport
 
     engine = make_engine(settings.data_dir)
     migrate(engine)
@@ -61,6 +63,7 @@ def create_app(
     app.include_router(system.router, prefix=f"{base}/api")
     app.include_router(settings_api.router, prefix=f"{base}/api")
     app.include_router(rutracker_api.router, prefix=f"{base}/api")
+    app.include_router(arr_api.router, prefix=f"{base}/api")
 
     # Built SPA: static assets + index.html fallback for client-side routes.
     # The build uses relative asset URLs; <base href> carries the URL base.

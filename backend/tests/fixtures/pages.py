@@ -45,3 +45,11 @@ ROW_HYOUKA = """<tr class="tCenter hl-tr" data-topic_id="4211111">
 </tr>"""
 
 ROW_NOT_FOUND = '<tr><td class="row1 tCenter pad_8" colspan="10">Не найдено</td></tr>'
+
+# Title split across highlight/wbr elements, as RuTracker marks up search hits.
+ROW_SPLIT_TITLE = """<tr class="tCenter hl-tr"><td class="row1 t-ico"></td><td class="row1 t-ico"></td>
+<td class="row1 f-name-col"><div class="f-name"><a class="gen f" href="tracker.php?f=1105">Аниме (HD Video)</a></div></td>
+<td class="row4 t-title-col"><div class="t-title"><a class="tLink" href="viewtopic.php?t=6000001">Городская демонесса (ТВ-2) / <b>Machikado</b> <b>Mazoku</b> 2-Choume / The Demon Girl Next Door 2 <wbr>[TV] [12 из 12] [JAP+Sub] [2022, Комедия, BDRemux] [1080p]</a></div></td>
+<td class="row1 u-name-col"><a href="#">up</a></td>
+<td class="row4 tor-size" data-ts_text="1000"><a class="tr-dl" href="dl.php?t=6000001">1 KB</a></td>
+<td data-ts_text="5"><b class="seedmed">5</b></td><td class="leechmed">0</td><td>1</td><td data-ts_text="1700000000">x</td></tr>"""

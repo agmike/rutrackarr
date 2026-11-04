@@ -32,7 +32,7 @@ class SearchRow:
 
 def logged_in_user(html: str) -> str | None:
     node = HTMLParser(html).css_first("#logged-in-username")
-    return node.text(strip=True) if node else None
+    return _text(node) or None if node else None
 
 
 def captcha(html: str) -> CaptchaChallenge | None:
@@ -52,7 +52,18 @@ def captcha(html: str) -> CaptchaChallenge | None:
 
 def login_error(html: str) -> str | None:
     node = HTMLParser(html).css_first("h4.warnColor1, div.msg-main, .mrg_16.warnColor1")
-    return node.text(strip=True) if node else None
+    return _text(node) or None if node else None
+
+
+def _text(node: Node | None) -> str:
+    """Visible text with original spacing; whitespace runs collapsed.
+
+    (`text(strip=True)` strips each text node separately and would glue
+    "Door 2 " + "[TV]" into "Door 2[TV]".)
+    """
+    if node is None:
+        return ""
+    return " ".join(node.text(deep=True, separator="", strip=False).split())
 
 
 def _int(text: str | None) -> int:
@@ -94,9 +105,9 @@ def search_rows(html: str) -> list[SearchRow]:
         rows.append(
             SearchRow(
                 topic_id=topic_id,
-                title=link.text(strip=True),
+                title=_text(link),
                 forum_id=_query_int(forum.attributes.get("href"), "f") if forum else None,
-                forum=forum.text(strip=True) if forum else "",
+                forum=_text(forum),
                 size=_int(size_cell.attributes.get("data-ts_text")) if size_cell else 0,
                 seeders=_int(
                     seed_b.text() if seed_b else (seeders_cell.text() if seeders_cell else "")
