@@ -38,6 +38,17 @@ You need your own RuTracker account; please respect the tracker's rules and keep
 rates low. A [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) instance is used
 to pass Cloudflare's browser check.
 
+## Security
+
+**rutrackarr has no built-in login.** Anyone who can reach its web UI can read and change
+its settings (stored secrets are never shown, but they can be replaced). Do not expose it
+directly to the internet: keep it on a private network, or put it behind a reverse proxy
+that does authentication (for example an SSO/forward-auth proxy). The Torznab endpoint used
+by Sonarr/Radarr is protected by its API key.
+
+Secrets (RuTracker password, API keys, TMDb token) are encrypted at rest with a key from
+`RUTRACKARR_SECRET_KEY`, or — when that is unset — a key generated into `/data/secret.key`.
+
 ## Development
 
 - `backend/` — Python 3.13, FastAPI (`uv sync`, `uv run pytest`, `uv run ruff check .`)

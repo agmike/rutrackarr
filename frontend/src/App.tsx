@@ -1,57 +1,53 @@
 import { Activity, Search, Settings } from "lucide-react"
-import { type ReactNode, useState } from "react"
+import { useEffect } from "react"
+import { NavLink, Outlet, useLocation } from "react-router"
+import { Toaster } from "sonner"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
-import { Placeholder } from "@/pages/Placeholder"
-import { StatusPage } from "@/pages/StatusPage"
 
-type Page = { id: string; label: string; icon: ReactNode; render: () => ReactNode }
-
-const pages: Page[] = [
-  { id: "status", label: "Status", icon: <Activity className="size-4" />, render: () => <StatusPage /> },
-  {
-    id: "search",
-    label: "Search",
-    icon: <Search className="size-4" />,
-    render: () => <Placeholder title="Search" text="Raw RuTracker search — coming in M1." />,
-  },
-  {
-    id: "settings",
-    label: "Settings",
-    icon: <Settings className="size-4" />,
-    render: () => <Placeholder title="Settings" text="RuTracker login, FlareSolverr, API keys — coming in M1." />,
-  },
+const nav = [
+  { to: "/", label: "Status", icon: Activity, end: true },
+  { to: "/search", label: "Search", icon: Search, end: false },
+  { to: "/settings", label: "Settings", icon: Settings, end: false },
 ]
 
 export default function App() {
-  const [current, setCurrent] = useState(pages[0].id)
-  const page = pages.find((p) => p.id === current) ?? pages[0]
+  const { pathname, hash } = useLocation()
+  const title = nav.find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))?.label ?? ""
+  // Scroll to #section links (e.g. from the status page) once the page has rendered.
+  useEffect(() => {
+    if (hash) setTimeout(() => document.getElementById(hash.slice(1))?.scrollIntoView({ behavior: "smooth" }), 50)
+  }, [hash])
   return (
     <div className="flex min-h-svh bg-background text-foreground">
-      <aside className="flex w-56 shrink-0 flex-col border-r bg-sidebar p-3">
+      <aside className="sticky top-0 flex h-svh w-56 shrink-0 flex-col border-r bg-sidebar p-3">
         <div className="px-2 py-3 text-lg font-semibold tracking-tight">rutrackarr</div>
         <Separator className="mb-2" />
         <nav className="flex flex-col gap-1">
-          {pages.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => setCurrent(p.id)}
-              className={cn(
-                "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
-                p.id === current && "bg-accent font-medium",
-              )}
+          {nav.map(({ to, label, icon: Icon, end }) => (
+            <NavLink
+              key={to}
+              to={to}
+              end={end}
+              className={({ isActive }) =>
+                cn(
+                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
+                  isActive && "bg-accent font-medium",
+                )
+              }
             >
-              {p.icon}
-              {p.label}
-            </button>
+              <Icon className="size-4" />
+              {label}
+            </NavLink>
           ))}
         </nav>
+        <p className="text-muted-foreground mt-auto px-2 text-xs">No built-in login — keep behind a reverse proxy.</p>
       </aside>
       <main className="flex-1 p-6">
-        <h1 className="mb-4 text-2xl font-semibold tracking-tight">{page.label}</h1>
-        {page.render()}
+        <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1>
+        <Outlet />
       </main>
+      <Toaster theme="dark" richColors position="bottom-right" />
     </div>
   )
 }

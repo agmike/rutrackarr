@@ -1,9 +1,8 @@
 name: Image
-# While the repo is private, Actions minutes count against the account budget:
-# images are built for v* tags and on demand only. When the repo goes public,
-# add `branches: [main]` back for :edge builds.
+# :edge from main, versioned images from v* tags.
 on:
   push:
+    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
 
