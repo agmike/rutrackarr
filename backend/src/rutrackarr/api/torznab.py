@@ -5,6 +5,9 @@ import logging
 from fastapi import APIRouter, Request, Response
 
 from rutrackarr import __version__
+from rutrackarr.releases.companions import find_video, plan
+from rutrackarr.releases.title import parse_title
+from rutrackarr.rutracker import torrent
 from rutrackarr.rutracker.errors import RuTrackerError
 from rutrackarr.torznab import feed
 from rutrackarr.torznab.search import Request as SearchRequest
@@ -72,8 +75,45 @@ async def download(topic_id: int, request: Request) -> Response:
     except RuTrackerError as e:
         request.app.state.rutracker_store.record_error(str(e))
         return Response(feed.error(900, f"RuTracker: {e}"), media_type=XML, status_code=502)
+    _remember(request, topic_id, data)
     return Response(
         data,
         media_type="application/x-bittorrent",
         headers={"Content-Disposition": f'attachment; filename="rutracker-{topic_id}.torrent"'},
     )
+
+
+def _remember(request: Request, topic_id: int, data: bytes) -> None:
+    """Keep the info hash and file list (not the torrent) for the import script."""
+    try:
+        info = torrent.read(data)
+    except torrent.TorrentError as e:
+        log.warning("topic %s: could not read the torrent: %s", topic_id, e)
+        return
+    row = request.app.state.torznab_cache.find(topic_id)
+    request.app.state.downloads.remember(
+        info, topic_id, row.title if row else "", row.forum if row else ""
+    )
+
+
+@router.get("/companions")
+def companions(request: Request, hash: str = "", source: str = "") -> Response:
+    """For Sonarr's import script: the external tracks that belong to an imported video.
+
+    Plain text, tab-separated: a ``#video`` line with the video's path inside the torrent (the
+    script strips it from the source path to find the torrent's folder), then one line per
+    companion file: path inside the torrent, suffix for the episode's name.
+    """
+    if not _authorized(request):
+        return Response("Incorrect API key\n", media_type="text/plain", status_code=401)
+    download = request.app.state.downloads.get(hash)
+    if download is None:
+        return Response("Not a RuTrackarr download\n", media_type="text/plain", status_code=404)
+    video = find_video(download.files, source)
+    if video is None:
+        return Response("Video not in this torrent\n", media_type="text/plain", status_code=404)
+    title = parse_title(download.title) if download.title else None
+    lines = [f"#video\t{video}"] + [
+        f"{c.path}\t{c.suffix}" for c in plan(download.files, video, title)
+    ]
+    return Response("\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")

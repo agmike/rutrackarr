@@ -35,3 +35,20 @@ class RuTrackerSessionRow(Base):
     cf_solved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
     last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class DownloadRow(Base):
+    """A .torrent RuTrackarr served: its info hash and file list (never the torrent itself —
+    it carries the passkey). Lets Sonarr's import script ask which files belong together."""
+
+    __tablename__ = "downloads"
+
+    info_hash: Mapped[str] = mapped_column(String(40), primary_key=True)
+    topic_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    forum: Mapped[str] = mapped_column(Text, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    files: Mapped[str] = mapped_column(Text, nullable=False)  # JSON [[path, size], ...]
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )

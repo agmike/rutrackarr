@@ -100,6 +100,14 @@ class SearchCache:
             self._data[key] = (time.monotonic(), rows)
             return rows
 
+    def find(self, topic_id: int) -> SearchRow | None:
+        """A topic from recent search results (Sonarr grabs what it was just shown)."""
+        for _, rows in self._data.values():
+            for row in rows:
+                if row.topic_id == topic_id:
+                    return row
+        return None
+
 
 def _wanted(req: Request, rel: Release, year: int | None) -> bool:
     if not rel.section.video:

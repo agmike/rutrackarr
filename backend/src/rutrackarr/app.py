@@ -19,6 +19,7 @@ from rutrackarr.rutracker.http import RuTrackerHttp
 from rutrackarr.rutracker.ratelimit import RequestSpacer
 from rutrackarr.rutracker.store import SessionStore
 from rutrackarr.settings.service import SettingsService
+from rutrackarr.torznab.downloads import DownloadStore
 from rutrackarr.torznab.search import SearchCache
 
 
@@ -62,6 +63,7 @@ def create_app(
         http, store, lambda: (svc.get("rutracker.username"), svc.get("rutracker.password"))
     )
 
+    app.state.downloads = DownloadStore(sessions)
     app.state.torznab_cache = SearchCache(
         app.state.rutracker,
         ttl=lambda: 60 * int(svc.get("search.cache_minutes") or 0),
