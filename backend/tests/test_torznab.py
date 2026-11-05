@@ -50,8 +50,8 @@ def test_release_names():
         == "One Piece - 1156-1180 1080p WEB-DL JAPANESE RUSSIAN OrigSubs RusVoice RusSubs RTA-T1 -RuTracker"
     )
     assert name(INTERSTELLAR, "Зарубежное кино (UHD Video)") == (
-        "Interstellar 2014 2160p BluRay REMUX HDR10 DV ENGLISH RUSSIAN OrigSubs RusDub RusMVO RusAVO "
-        "RusSubs EngSubs RTA-T1 -RuTracker"
+        "Interstellar 2014 2160p BluRay REMUX HDR10 DV ENGLISH RUSSIAN OrigSubs RusDub RusSubs EngSubs "
+        "RTA-T1 -RuTracker"
     )
     assert (
         name(
@@ -273,3 +273,15 @@ def test_titles_parsed_once():
     search_mod.build(row, "Sousou no Frieren")
     info = search_mod._analyse.cache_info()
     assert (info.misses, info.hits) == (1, 1)
+
+
+def test_only_best_russian_voice_in_name():
+    n = name(
+        "Молодой Шерлок / Young Sherlock / Сезон: 1 / Серии: 1-8 из 8 (Гай Ричи) [2026, Великобритания, "
+        "WEB-DL 1080p] 5 x MVO (HDrezka Studio, LostFilm) + DVO (Кубик в Кубе) + Dub (WinMedia) + Original + Sub (Rus, Eng)",
+        "Сериалы Великобритании и Ирландии (HD Video)",
+    )
+    tokens = n.split()
+    assert "RusDub" in tokens and not {"RusMVO", "RusDVO", "RusVoice"} & set(tokens)
+    n = name("А / A [TV] [12 из 12] [RUS(int)] [2020, WEBRip] [1080p]", "Аниме (HD Video)")
+    assert "RusVoice" in n.split() and "RTA-T2" in n

@@ -132,11 +132,13 @@ def language_tokens(t: ParsedTitle, verdict: LanguageVerdict) -> list[str]:
         tokens.append("NoDialogue")
     elif verdict.tier == 1 and verdict.original != "rus":
         tokens.append("OrigSubs")
+    # Only the best Russian voice type: custom-format scores add up, so listing every track
+    # would make "one more voice-over" look like an upgrade of the same release.
     voices = {a.voice for a in t.audio if a.lang == "rus" and not a.original}
-    for voice in ("dub", "mvo", "dvo", "avo", "vo"):
-        if voice in voices:
-            tokens.append(_VOICE_TOKEN[voice])
-    if None in voices and not voices - {None}:
+    best = next((v for v in ("dub", "mvo", "dvo", "avo", "vo") if v in voices), None)
+    if best:
+        tokens.append(_VOICE_TOKEN[best])
+    elif None in voices:
         tokens.append("RusVoice")
     if any(a.lang == "eng" and not a.original and verdict.original != "eng" for a in t.audio):
         tokens.append("EngVoice")  # not "EngDub": TRaSH's anime "Dubs Only" matches eng_?dub
