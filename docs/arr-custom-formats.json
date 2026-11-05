@@ -84,7 +84,7 @@
         "negate": false,
         "required": true,
         "fields": {
-          "value": "\\bRusDub\\b"
+          "value": "^(?=.*\\bRTA-T2\\b).*\\bRusDub\\b"
         }
       }
     ]
@@ -99,7 +99,7 @@
         "negate": false,
         "required": true,
         "fields": {
-          "value": "\\bRusMVO\\b"
+          "value": "^(?=.*\\bRTA-T2\\b).*\\bRusMVO\\b"
         }
       }
     ]
@@ -114,7 +114,7 @@
         "negate": false,
         "required": true,
         "fields": {
-          "value": "\\bRusDVO\\b"
+          "value": "^(?=.*\\bRTA-T2\\b).*\\bRusDVO\\b"
         }
       }
     ]
@@ -129,7 +129,7 @@
         "negate": false,
         "required": true,
         "fields": {
-          "value": "\\bRusAVO\\b"
+          "value": "^(?=.*\\bRTA-T2\\b).*\\bRusAVO\\b"
         }
       }
     ]
@@ -144,7 +144,7 @@
         "negate": false,
         "required": true,
         "fields": {
-          "value": "\\bRusVO\\b"
+          "value": "^(?=.*\\bRTA-T2\\b).*\\bRusVO\\b"
         }
       }
     ]
@@ -159,7 +159,7 @@
         "negate": false,
         "required": true,
         "fields": {
-          "value": "\\bRusVoice\\b"
+          "value": "^(?=.*\\bRTA-T2\\b).*\\bRusVoice\\b"
         }
       }
     ]
