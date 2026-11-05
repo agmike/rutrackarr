@@ -1,9 +1,11 @@
 """From a Torznab request to ranked, renamed releases."""
 
 import asyncio
+import functools
 import math
 import re
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 from rutrackarr.releases.language import LanguageVerdict, assess
@@ -13,7 +15,6 @@ from rutrackarr.releases.title import ParsedTitle, parse_title
 from rutrackarr.rutracker.client import RuTrackerClient
 from rutrackarr.rutracker.parse import SearchRow
 
-CACHE_TTL = 600  # seconds; Sonarr repeats the same query per alias/episode
 _WORD = re.compile(r"[^\W_]+")
 
 
@@ -70,17 +71,30 @@ def matches_query(t: ParsedTitle, q: str) -> bool:
 
 
 class SearchCache:
-    def __init__(self, client: RuTrackerClient, ttl: int = CACHE_TTL) -> None:
-        self._client, self._ttl = client, ttl
+    """RuTracker results per query. Text searches live long (a season search repeats each query
+    for every episode and title, over 10+ minutes); the no-query RSS feed lives short so new
+    topics show up quickly. TTLs are read on every lookup, so settings apply immediately."""
+
+    def __init__(
+        self,
+        client: RuTrackerClient,
+        ttl: Callable[[], float] = lambda: 3600,
+        rss_ttl: Callable[[], float] = lambda: 300,
+    ) -> None:
+        self._client, self._ttl, self._rss_ttl = client, ttl, rss_ttl
         self._data: dict[str, tuple[float, list[SearchRow]]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
 
     async def search(self, q: str) -> list[SearchRow]:
         key = " ".join(q.lower().split())
+        ttl = self._ttl() if key else self._rss_ttl()
         lock = self._locks.setdefault(key, asyncio.Lock())
         async with lock:  # concurrent identical queries share one RuTracker request
+            now = time.monotonic()
+            keep = max(self._ttl(), self._rss_ttl())  # drop entries no lookup can use any more
+            self._data = {k: v for k, v in self._data.items() if now - v[0] < keep}
             hit = self._data.get(key)
-            if hit and time.monotonic() - hit[0] < self._ttl:
+            if hit and now - hit[0] < ttl:
                 return hit[1]
             rows = await self._client.search(q)
             self._data[key] = (time.monotonic(), rows)
@@ -111,10 +125,17 @@ def _wanted(req: Request, rel: Release, year: int | None) -> bool:
     return not (year and movie and t.year and abs(t.year - year) > 1)
 
 
+@functools.lru_cache(maxsize=4096)
+def _analyse(title_text: str, forum: str) -> tuple[ParsedTitle, Section, LanguageVerdict]:
+    """Parse once per title: Sonarr asks for the same results dozens of times per search.
+    The returned objects are shared and must not be modified."""
+    section = classify(forum)
+    title = parse_title(title_text)
+    return title, section, assess(title, section)
+
+
 def build(row: SearchRow, query: str | None) -> Release:
-    section = classify(row.forum)
-    title = parse_title(row.title)
-    language = assess(title, section)
+    title, section, language = _analyse(row.title, row.forum)
     return Release(
         row,
         title,

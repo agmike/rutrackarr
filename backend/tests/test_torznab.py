@@ -10,7 +10,8 @@ from rutrackarr.releases.language import assess
 from rutrackarr.releases.naming import categories, release_name
 from rutrackarr.releases.sections import classify
 from rutrackarr.releases.title import parse_title
-from rutrackarr.torznab.search import clean_query
+from rutrackarr.torznab import search as search_mod
+from rutrackarr.torznab.search import SearchCache, clean_query
 from tests.fixtures import pages
 from tests.test_rutracker_flow import api, html, net  # noqa: F401  (fixtures)
 
@@ -228,3 +229,47 @@ def test_english_dub_token_avoids_trash_dubs_only():
         "Аниме (HD Video)",
     )
     assert "EngVoice" in t and "dub" not in t.lower().replace("rusdub", "")
+
+
+async def test_cache_ttls(monkeypatch):
+    calls: list[str] = []
+
+    class Client:
+        async def search(self, q):
+            calls.append(q)
+            return []
+
+    now = [1000.0]
+    monkeypatch.setattr(search_mod.time, "monotonic", lambda: now[0])
+    ttl = [3600.0]
+    cache = SearchCache(Client(), ttl=lambda: ttl[0], rss_ttl=lambda: 300)  # type: ignore[arg-type]
+    await cache.search("Frieren")
+    await cache.search("")
+    now[0] += 1200  # 20 minutes: a long season search later
+    await cache.search("frieren ")  # same normalised query: cached
+    await cache.search("")  # RSS: expired after 5 minutes
+    assert calls == ["Frieren", "", ""]
+    ttl[0] = 0  # cache off (setting changed): every text search goes to RuTracker
+    await cache.search("Frieren")
+    assert calls[-1] == "Frieren" and len(calls) == 4
+
+
+def test_titles_parsed_once():
+    search_mod._analyse.cache_clear()
+    row = search_mod.SearchRow(
+        topic_id=1,
+        title=FRIEREN_S2,
+        forum_id=1105,
+        forum="Аниме (HD Video)",
+        size=1,
+        seeders=1,
+        leechers=0,
+        downloads=0,
+        added=None,
+        author="",
+        approved=None,
+    )
+    search_mod.build(row, "Frieren")
+    search_mod.build(row, "Sousou no Frieren")
+    info = search_mod._analyse.cache_info()
+    assert (info.misses, info.hits) == (1, 1)

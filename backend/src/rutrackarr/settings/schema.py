@@ -20,6 +20,9 @@ FIELDS: dict[str, FieldDef] = {
     "rutracker.password": FieldDef("secret"),
     "rutracker.base_url": FieldDef("url", "https://rutracker.org"),
     "rutracker.requests_per_minute": FieldDef("int", 10, minimum=1, maximum=60),
+    # Search result cache (Sonarr repeats the same query per title, episode and search type)
+    "search.cache_minutes": FieldDef("int", 60, minimum=0, maximum=1440),
+    "search.rss_cache_minutes": FieldDef("int", 5, minimum=0, maximum=60),
     # Cloudflare challenge solver
     "flaresolverr.url": FieldDef("url", "http://flaresolverr:8191/"),
     "flaresolverr.timeout_seconds": FieldDef("int", 60, minimum=10, maximum=300),

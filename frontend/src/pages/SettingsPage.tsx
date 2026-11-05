@@ -21,6 +21,21 @@ const rutracker: FieldSpec[] = [
   },
 ]
 
+const search: FieldSpec[] = [
+  {
+    key: "search.cache_minutes",
+    label: "Keep search results for (minutes)",
+    type: "number",
+    help: "Sonarr repeats the same search for every episode, title and search type — an anime season search can take 15 minutes. Results are reused for this long, so each RuTracker search runs once. 0 turns the cache off.",
+  },
+  {
+    key: "search.rss_cache_minutes",
+    label: "Keep the newest-releases feed for (minutes)",
+    type: "number",
+    help: "Sonarr/Radarr RSS sync (a search without a query). Keep it short so new topics are picked up quickly.",
+  },
+]
+
 const flaresolverr: FieldSpec[] = [
   { key: "flaresolverr.url", label: "FlareSolverr URL", type: "url", placeholder: "http://flaresolverr:8191/" },
   { key: "flaresolverr.timeout_seconds", label: "Timeout (seconds)", type: "number" },
@@ -61,6 +76,14 @@ export function SettingsPage() {
         <SettingsSection title="RuTracker" description="Your RuTracker account." fields={rutracker} view={data}>
           <RuTrackerSessionPanel />
         </SettingsSection>
+      </section>
+      <section id="search">
+        <SettingsSection
+          title="Search"
+          description="How RuTrackarr answers Sonarr and Radarr."
+          fields={search}
+          view={data}
+        />
       </section>
       <section id="flaresolverr">
         <SettingsSection

@@ -62,7 +62,11 @@ def create_app(
         http, store, lambda: (svc.get("rutracker.username"), svc.get("rutracker.password"))
     )
 
-    app.state.torznab_cache = SearchCache(app.state.rutracker)
+    app.state.torznab_cache = SearchCache(
+        app.state.rutracker,
+        ttl=lambda: 60 * int(svc.get("search.cache_minutes") or 0),
+        rss_ttl=lambda: 60 * int(svc.get("search.rss_cache_minutes") or 0),
+    )
 
     app.include_router(torznab_api.router, prefix=f"{base}/torznab")
     app.include_router(system.router, prefix=f"{base}/api")
