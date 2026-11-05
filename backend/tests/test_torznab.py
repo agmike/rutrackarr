@@ -39,7 +39,7 @@ def name(title: str, forum: str, query: str | None = None) -> str:
 
 def test_release_names():
     assert name(FRIEREN_S2, "Аниме (HD Video)", "Frieren Beyond Journeys End") == (
-        "Frieren: Beyond Journey's End S02 1080p BluRay JAPANESE RUSSIAN OrigSubs RusVoice RusSubs "
+        "Frieren Beyond Journeys End S02 1080p BluRay JAPANESE RUSSIAN OrigSubs RusVoice RusSubs "
         "RTA-T1 -RuTracker"
     )
     assert (
@@ -127,7 +127,7 @@ def test_tvsearch_filters_and_renames(api, net):  # noqa: F811
     }
     found = items(api.get("/torznab/api", params=params))
     assert [i.findtext("title") for i in found] == [
-        "Frieren: Beyond Journey's End S02 1080p BluRay JAPANESE RUSSIAN OrigSubs RusVoice RusSubs "
+        "Frieren Beyond Journeys End S02 1080p BluRay JAPANESE RUSSIAN OrigSubs RusVoice RusSubs "
         "RTA-T1 -RuTracker"
     ]
     item = found[0]
@@ -285,3 +285,27 @@ def test_only_best_russian_voice_in_name():
     assert "RusDub" in tokens and not {"RusMVO", "RusDVO", "RusVoice"} & set(tokens)
     n = name("А / A [TV] [12 из 12] [RUS(int)] [2020, WEBRip] [1080p]", "Аниме (HD Video)")
     assert "RusVoice" in n.split() and "RTA-T2" in n
+
+
+def test_name_follows_the_alias_sonarr_searched_for():
+    nia = (
+        "Кёран Рэйдзё Ниа Листон / Kyouran Reijou Nia Liston: Byoujaku Reijou ni Tensei shita Kamigoroshi "
+        "(Kami-goroshi) no Bujin no Karei Naru Musouroku [TV] [1-5 из 12] [RUS(ext), JAP+Sub] [2026, WEB-DL] [1080p]"
+    )
+    n = name(nia, "Онгоинги (HD Video)", "Kyouran Reijou Nia Liston")
+    assert n.startswith("Kyouran Reijou Nia Liston S01E01-E05 1080p WEB-DL")
+    # Not one of this topic's names: the RuTracker name stays (the romaji query above maps it).
+    n = name(nia, "Онгоинги (HD Video)", "Nia Liston The Merciless Maiden")
+    assert n.startswith("Kyouran Reijou Nia Liston: Byoujaku")
+    assert name(nia, "Онгоинги (HD Video)").startswith("Kyouran Reijou Nia Liston: Byoujaku")  # RSS
+
+
+def test_partial_name_match_keeps_the_rutracker_name():
+    lego = (
+        "LEGO Большой куш / LEGO Ван-Пис / LEGO One Piece / Сезон: 1 / Серии: 1-2 из 2 (Челси Кер) "
+        "[2026, США, Мультсериал, WEB-DL 1080p] Dub + Original + Sub (Rus, Eng)"
+    )
+    assert name(lego, "Мультсериалы", "One Piece").startswith("LEGO One Piece S01")
+    assert name(FRIEREN_S2, "Аниме (HD Video)", "Sousou no Frieren").startswith(
+        "Sousou no Frieren S02"
+    )

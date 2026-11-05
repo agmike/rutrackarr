@@ -5,8 +5,9 @@ A RuTracker title is rewritten into a scene-style name Sonarr/Radarr parse relia
     <Name> <S02 | S02E01-E08 | - 1156-1180 | 2014> <1080p> <BluRay> <h264> <HDR>
         <JAPANESE RUSSIAN> <OrigSubs | RusDub …> <RTA-T1> -RuTracker
 
-- Name: the Latin name that best matches what was searched for (Sonarr matches it against the
-  series' titles); season hints are removed from it, the season goes into SxxEyy.
+- Name: the title Sonarr/Radarr searched for (always one of the series' own titles, so the
+  release maps back to it); for RSS, the first Latin name of the RuTracker title with season
+  hints removed. The season goes into SxxEyy.
 - Language words (JAPANESE, RUSSIAN, …) are for Sonarr/Radarr's own language detection.
 - CamelCase tokens (RusDub, OrigSubs, EngVoice, …) and the tier token RTA-T<n> are for custom
   formats; single words, so Sonarr's language parser doesn't read "RUS" out of them, and no
@@ -96,6 +97,28 @@ def pick_name(t: ParsedTitle, query: str | None) -> str:
     return max(pool, key=lambda n: len(wanted & {w.lower() for w in _WORD.findall(n)}))
 
 
+def _norm(text: str) -> str:
+    text = _SEASON_HINTS.sub(" ", text).replace("'", "").replace("’", "")
+    return " ".join(w.lower() for w in _WORD.findall(text))
+
+
+def names_title(t: ParsedTitle, query: str) -> bool:
+    """One of the RuTracker names is the searched title: the same words (punctuation and season
+    hints aside), or the title followed by a subtitle after ":" / " - ". A partial match
+    ("LEGO One Piece" for "One Piece") is not enough: naming that release after the query
+    would make it look like an episode of the other series."""
+    wanted = _norm(query)
+    if not wanted:
+        return False
+    for n in t.names:
+        if _norm(n) == wanted:
+            return True
+        head = re.split(r"\s*:\s*|\s+-\s+", n, maxsplit=1)[0]
+        if head != n and _norm(head) == wanted:
+            return True
+    return False
+
+
 def is_absolute(t: ParsedTitle, section: Section) -> bool:
     """Long-running anime without seasons (One Piece 1156-1180): absolute episode numbers."""
     e = t.episodes
@@ -152,7 +175,12 @@ def language_tokens(t: ParsedTitle, verdict: LanguageVerdict) -> list[str]:
 def release_name(
     t: ParsedTitle, section: Section, verdict: LanguageVerdict, query: str | None
 ) -> str:
-    parts = [pick_name(t, query), numbering(t, section)]
+    """`query` is the (cleaned) title Sonarr/Radarr searched for: one of the series' own titles
+    or aliases, so a release named after it always maps back to the series. Without a query
+    (RSS), or when no RuTracker name *is* that title, the best Latin name is used."""
+    query = (query or "").strip()
+    name = query if query and names_title(t, query) else pick_name(t, query or None)
+    parts = [name, numbering(t, section)]
     resolution = t.resolution or ("2160p" if t.uhd else None)
     parts += [resolution or "", _SOURCE.get(t.source or "", t.source or "")]
     parts.append(_CODEC.get(t.codec or "", ""))
