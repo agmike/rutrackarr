@@ -1,0 +1,122 @@
+[
+  {
+    "name": "RuTrackarr RU-first · Russian Voice",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRus(Dub|MVO|DVO|AVO|VO|Voice)\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr RU-first · Original Audio",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bOrigAudio\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr RU-first · Subtitles",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\b(RusSubs|EngSubs)\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr RU-first · Dub",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusDub\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr RU-first · MVO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusMVO\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr RU-first · DVO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusDVO\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr RU-first · AVO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusAVO\\b"
+        }
+      }
+    ]
+  },
+  {
+    "name": "RuTrackarr RU-first · VO",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Release title",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRusVO\\b"
+        }
+      }
+    ]
+  }
+]

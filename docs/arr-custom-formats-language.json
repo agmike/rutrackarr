@@ -1,0 +1,38 @@
+[
+  {
+    "name": "Language: Not Original, Russian or English",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "Not Original",
+        "implementation": "LanguageSpecification",
+        "negate": true,
+        "required": true,
+        "fields": {
+          "value": -2,
+          "exceptLanguage": false
+        }
+      },
+      {
+        "name": "Not Russian",
+        "implementation": "LanguageSpecification",
+        "negate": true,
+        "required": true,
+        "fields": {
+          "value": 11,
+          "exceptLanguage": false
+        }
+      },
+      {
+        "name": "Not English",
+        "implementation": "LanguageSpecification",
+        "negate": true,
+        "required": true,
+        "fields": {
+          "value": 1,
+          "exceptLanguage": false
+        }
+      }
+    ]
+  }
+]
