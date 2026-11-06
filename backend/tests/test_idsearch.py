@@ -181,3 +181,16 @@ def test_episode_offset_for_split_cours():
         t, s, assess(t, s), None, series_title="Show", season=m.season, offset=m.offset
     )
     assert name.startswith("Show S01E13-E18 1080p")
+
+
+def test_absolute_anime_kept_for_season_episode_requests():
+    from rutrackarr.rutracker.parse import SearchRow
+    from rutrackarr.torznab.search import Request, _wanted, build
+
+    row = SearchRow(
+        topic_id=1, title="Большой Куш / One Piece / Ван-Пис [TV] [1156-1180 из 1000+] [RUS(ext), JAP+Sub] [1999, WEB-DL] [1080p]",
+        forum_id=2544, forum="Ван-Пис", size=1, seeders=1, leechers=0, downloads=0, added=None, author="", approved=None,
+    )  # fmt: skip
+    rel = build(row, None)
+    assert _wanted(Request("tvsearch", season=22, ep=5, tvdbid=81797), rel, None)
+    assert not _wanted(Request("search", absolute=1100), rel, None)

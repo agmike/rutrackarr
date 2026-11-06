@@ -133,7 +133,12 @@ def _wanted(req: Request, rel: Release, year: int | None) -> bool:
         if season is not None and not (season <= req.season <= last):
             return False
     e = t.episodes
-    unchecked = e is None or e.complete or e.first is None or e.last is None
+    # Absolute-numbered anime (One Piece 1156-1180) can't be compared with Sonarr's per-season
+    # episode numbers; Sonarr maps the absolute numbers itself.
+    unchecked = (
+        e is None or e.complete or e.first is None or e.last is None
+        or (req.absolute is None and is_absolute(t, rel.section))
+    )  # fmt: skip
     if req.ep is not None and not unchecked and not (e.first <= req.ep <= e.last):  # type: ignore[union-attr,operator]
         return False
     absolute = req.absolute is not None and is_absolute(t, rel.section) and not unchecked

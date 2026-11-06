@@ -23,8 +23,12 @@ def caps(version: str) -> bytes:
     ET.SubElement(root, "server", version=version, title="RuTrackarr")
     ET.SubElement(root, "limits", max="100", default="100")
     searching = ET.SubElement(root, "searching")
-    ET.SubElement(searching, "search", available="yes", supportedParams="q")
-    ET.SubElement(searching, "tv-search", available="yes", supportedParams="q,season,ep,tvdbid")
+    # TV: ID searches only. RuTrackarr finds every name of the series itself (anime ID list,
+    # Shikimori, Sonarr's titles), so Sonarr needn't repeat each search per alias and number
+    # format — with Sonarr's 2 s pause between requests per indexer that made anime season
+    # searches take 15+ minutes. Plain text search isn't offered for the same reason.
+    ET.SubElement(searching, "search", available="no", supportedParams="q")
+    ET.SubElement(searching, "tv-search", available="yes", supportedParams="season,ep,tvdbid")
     ET.SubElement(searching, "movie-search", available="yes", supportedParams="q")
     cats = ET.SubElement(root, "categories")
     for cid, (name, subs) in CATEGORIES.items():
