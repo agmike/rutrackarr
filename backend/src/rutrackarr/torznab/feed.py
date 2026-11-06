@@ -24,7 +24,7 @@ def caps(version: str) -> bytes:
     ET.SubElement(root, "limits", max="100", default="100")
     searching = ET.SubElement(root, "searching")
     ET.SubElement(searching, "search", available="yes", supportedParams="q")
-    ET.SubElement(searching, "tv-search", available="yes", supportedParams="q,season,ep")
+    ET.SubElement(searching, "tv-search", available="yes", supportedParams="q,season,ep,tvdbid")
     ET.SubElement(searching, "movie-search", available="yes", supportedParams="q")
     cats = ET.SubElement(root, "categories")
     for cid, (name, subs) in CATEGORIES.items():
@@ -68,6 +68,8 @@ def results(releases: list[Release], download_url, topic_url) -> bytes:  # type:
         }
         for cid in rel.categories:
             ET.SubElement(item, f"{{{TORZNAB_NS}}}attr", name="category", value=str(cid))
+        if rel.tvdbid:
+            ET.SubElement(item, f"{{{TORZNAB_NS}}}attr", name="tvdbid", value=str(rel.tvdbid))
         for name, value in attrs.items():
             ET.SubElement(item, f"{{{TORZNAB_NS}}}attr", name=name, value=str(value))
     return _xml(rss)

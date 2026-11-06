@@ -104,7 +104,7 @@ def key(api) -> str:  # noqa: F811
 def test_caps_and_auth(api):  # noqa: F811
     r = api.get("/torznab/api", params={"t": "caps"})
     root = ET.fromstring(r.content)
-    assert root.find("./searching/tv-search").get("supportedParams") == "q,season,ep"
+    assert root.find("./searching/tv-search").get("supportedParams") == "q,season,ep,tvdbid"
     assert {c.get("id") for c in root.iter("subcat")} >= {"5070", "2045"}
     r = api.get("/torznab/api", params={"t": "tvsearch", "q": "x", "apikey": "wrong"})
     assert ET.fromstring(r.content).get("code") == "100"

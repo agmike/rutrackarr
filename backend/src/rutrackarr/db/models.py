@@ -52,3 +52,13 @@ class DownloadRow(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
+
+
+class MetadataRow(Base):
+    """Cached metadata (e.g. a Shikimori entry) as JSON, by key."""
+
+    __tablename__ = "metadata_cache"
+
+    key: Mapped[str] = mapped_column(String(200), primary_key=True)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

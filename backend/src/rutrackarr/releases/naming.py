@@ -127,21 +127,24 @@ def is_absolute(t: ParsedTitle, section: Section) -> bool:
     return (e.first or 1) > 1 and (e.total is None or (e.last or 0) > 100)
 
 
-def numbering(t: ParsedTitle, section: Section) -> str:
-    """S02 / S02E01-E08 / S01E08 for series, "- 1156-1180" for long anime, the year for movies."""
+def numbering(t: ParsedTitle, section: Section, season: int | None = None, offset: int = 0) -> str:
+    """S02 / S02E01-E08 / S01E08 for series, "- 1156-1180" for long anime, the year for movies.
+    `season`/`offset` come from metadata (the TVDB season and episode offset of the anime entry
+    the topic belongs to) and win over what the title says."""
     if is_movie(section, t):
         return str(t.year) if t.year else ""
     e = t.episodes
     if is_absolute(t, section) and e:
         return f"- {e.first:03d}" if e.first == e.last else f"- {e.first:03d}-{e.last:03d}"
-    season = f"S{t.season or 1:02d}"
-    if t.season_last:
+    if t.season_last and season is None:
         return f"S{t.season:02d}-S{t.season_last:02d}"
-    if e is None or e.complete or e.first is None or e.last is None:
-        return season
-    if e.first == e.last:
-        return f"{season}E{e.first:02d}"
-    return f"{season}E{e.first:02d}-E{e.last:02d}"
+    s = f"S{season or t.season or 1:02d}"
+    if e is None or e.first is None or e.last is None or (e.complete and not offset):
+        return s
+    first, last = e.first + offset, e.last + offset
+    if first == last:
+        return f"{s}E{first:02d}"
+    return f"{s}E{first:02d}-E{last:02d}"
 
 
 def language_tokens(t: ParsedTitle, verdict: LanguageVerdict) -> list[str]:
@@ -173,14 +176,27 @@ def language_tokens(t: ParsedTitle, verdict: LanguageVerdict) -> list[str]:
 
 
 def release_name(
-    t: ParsedTitle, section: Section, verdict: LanguageVerdict, query: str | None
+    t: ParsedTitle,
+    section: Section,
+    verdict: LanguageVerdict,
+    query: str | None,
+    *,
+    series_title: str | None = None,
+    season: int | None = None,
+    offset: int = 0,
 ) -> str:
-    """`query` is the (cleaned) title Sonarr/Radarr searched for: one of the series' own titles
-    or aliases, so a release named after it always maps back to the series. Without a query
-    (RSS), or when no RuTracker name *is* that title, the best Latin name is used."""
+    """`series_title` is Sonarr's own title of the series an ID search resolved the topic to.
+    Otherwise `query`, the (cleaned) title Sonarr/Radarr searched for — one of the series' own
+    titles or aliases, so a release named after it maps back to the series — when a RuTracker
+    name *is* that title; else the best Latin name (RSS, unrelated hits)."""
     query = (query or "").strip()
-    name = query if query and names_title(t, query) else pick_name(t, query or None)
-    parts = [name, numbering(t, section)]
+    if series_title:
+        name = series_title
+    elif query and names_title(t, query):
+        name = query
+    else:
+        name = pick_name(t, query or None)
+    parts = [name, numbering(t, section, season, offset)]
     resolution = t.resolution or ("2160p" if t.uhd else None)
     parts += [resolution or "", _SOURCE.get(t.source or "", t.source or "")]
     parts.append(_CODEC.get(t.codec or "", ""))

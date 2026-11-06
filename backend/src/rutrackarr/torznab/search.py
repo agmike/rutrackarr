@@ -14,6 +14,7 @@ from rutrackarr.releases.sections import Section, classify
 from rutrackarr.releases.title import ParsedTitle, parse_title
 from rutrackarr.rutracker.client import RuTrackerClient
 from rutrackarr.rutracker.parse import SearchRow
+from rutrackarr.torznab.idsearch import Resolver, SeriesContext, match
 
 _WORD = re.compile(r"[^\W_]+")
 
@@ -26,6 +27,7 @@ class Request:
     ep: int | None = None
     absolute: int | None = None  # anime absolute episode, from the end of a t=search query
     cats: list[int] = field(default_factory=list)
+    tvdbid: int | None = None
 
 
 @dataclass
@@ -36,6 +38,8 @@ class Release:
     language: LanguageVerdict
     name: str
     categories: list[int]
+    season: int | None = None  # from metadata (ID search), wins over the title
+    tvdbid: int | None = None
 
 
 def absolute_episode(q: str) -> tuple[str, int | None]:
@@ -119,8 +123,13 @@ def _wanted(req: Request, rel: Release, year: int | None) -> bool:
         return False
     t = rel.title
     if req.season is not None and not movie:
-        season = t.season if t.season is not None else (None if is_absolute(t, rel.section) else 1)
-        last = t.season_last or season
+        if rel.season is not None:
+            season = last = rel.season
+        else:
+            season = (
+                t.season if t.season is not None else (None if is_absolute(t, rel.section) else 1)
+            )
+            last = t.season_last or season
         if season is not None and not (season <= req.season <= last):
             return False
     e = t.episodes
@@ -142,29 +151,53 @@ def _analyse(title_text: str, forum: str) -> tuple[ParsedTitle, Section, Languag
     return title, section, assess(title, section)
 
 
-def build(row: SearchRow, query: str | None) -> Release:
+def build(row: SearchRow, query: str | None, ctx: SeriesContext | None = None) -> Release | None:
+    """A release for Sonarr/Radarr. With an ID search context, topics that aren't the series
+    are dropped (None) and season, episode offset and name come from the metadata."""
     title, section, language = _analyse(row.title, row.forum)
+    if ctx is None:
+        name = release_name(title, section, language, query)
+        return Release(row, title, section, language, name, categories(section, title))
+    m = match(ctx, title)
+    if m is None:
+        return None
+    season = None if is_absolute(title, section) else m.season
+    name = release_name(
+        title, section, language, query, series_title=ctx.title, season=season, offset=m.offset
+    )
     return Release(
-        row,
-        title,
-        section,
-        language,
-        release_name(title, section, language, query),
-        categories(section, title),
+        row, title, section, language, name, categories(section, title), season, ctx.tvdb_id
     )
 
 
-async def run(cache: SearchCache, req: Request) -> list[Release]:
+async def run(cache: SearchCache, req: Request, resolver: Resolver | None = None) -> list[Release]:
+    if req.tvdbid and resolver is not None:
+        ctx = await resolver.tv(req.tvdbid, req.season)
+        if ctx is not None:
+            return await _run_ids(cache, req, ctx)
+        if not req.q:
+            return []  # nothing known about this id and no title to fall back on
     q, year = clean_query(req.q)
     if req.kind == "search" and req.absolute is None:
         q, req.absolute = absolute_episode(q)
     rows = await cache.search(q)
-    releases = [build(r, q) for r in rows]
+    releases = [r for r in (build(row, q) for row in rows) if r]
     if q:
         releases = [r for r in releases if matches_query(r.title, q)]
         words = q.split()
         if not any(r.section.video for r in releases) and len(words) > 2:
             # RuTracker's search is literal about words ("Journeys" vs "Journey's"): retry wider.
             rows = await cache.search(" ".join(words[:2]))
-            releases = [r for r in (build(row, q) for row in rows) if matches_query(r.title, q)]
+            built = (build(row, q) for row in rows)
+            releases = [r for r in built if r and matches_query(r.title, q)]
     return [r for r in releases if _wanted(req, r, year)]
+
+
+async def _run_ids(cache: SearchCache, req: Request, ctx: SeriesContext) -> list[Release]:
+    """One RuTracker search per name of the series (cached), merged by topic."""
+    rows: dict[int, SearchRow] = {}
+    for q in ctx.queries:
+        for row in await cache.search(q):
+            rows.setdefault(row.topic_id, row)
+    releases = [r for r in (build(row, None, ctx) for row in rows.values()) if r]
+    return [r for r in releases if _wanted(req, r, None)]

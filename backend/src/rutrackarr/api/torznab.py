@@ -45,9 +45,10 @@ async def api(request: Request) -> Response:
         season=_int(p.get("season")),
         ep=_int(p.get("ep")),
         cats=[int(c) for c in p.get("cat", "").split(",") if c.strip().isdigit()],
+        tvdbid=_int(p.get("tvdbid")),
     )
     try:
-        releases = await run(request.app.state.torznab_cache, req)
+        releases = await run(request.app.state.torznab_cache, req, request.app.state.resolver)
     except RuTrackerError as e:
         request.app.state.rutracker_store.record_error(str(e))
         log.warning("torznab %s q=%r failed: %s", req.kind, req.q, e)
