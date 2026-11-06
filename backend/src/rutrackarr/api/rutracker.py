@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel
 
 from rutrackarr.releases.language import assess
-from rutrackarr.releases.sections import classify
+from rutrackarr.releases.sections import Catalogue, classify
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import parse
 from rutrackarr.rutracker.client import RuTrackerClient
@@ -153,7 +153,10 @@ async def search(request: Request, q: str = "", f: str = "") -> dict[str, Any]:
     return {
         "query": q,
         "took_ms": int((time.monotonic() - start) * 1000),
-        "results": [_result(r, client.topic_url(r.topic_id)) for r in rows],
+        "results": [
+            _result(r, client.topic_url(r.topic_id), request.app.state.torznab_cache.catalogue)
+            for r in rows
+        ],
     }
 
 
@@ -161,8 +164,8 @@ class FlareSolverrTest(BaseModel):
     url: str | None = None  # unsaved form value; falls back to the setting
 
 
-def _result(row: parse.SearchRow, url: str) -> dict[str, Any]:
-    section = classify(row.forum)
+def _result(row: parse.SearchRow, url: str, catalogue: Catalogue | None = None) -> dict[str, Any]:
+    section = catalogue.section(row.forum_id, row.forum) if catalogue else classify(row.forum)
     title = parse_title(row.title)
     return {
         **row.__dict__,

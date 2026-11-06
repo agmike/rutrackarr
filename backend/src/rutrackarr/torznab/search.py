@@ -2,21 +2,26 @@
 
 import asyncio
 import functools
+import json
+import logging
 import math
 import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from rutrackarr.releases.language import LanguageVerdict, assess
 from rutrackarr.releases.naming import categories, is_absolute, is_movie, release_name
-from rutrackarr.releases.sections import Section, classify
+from rutrackarr.releases.sections import Catalogue, Section
 from rutrackarr.releases.title import ParsedTitle, parse_title
 from rutrackarr.rutracker.client import RuTrackerClient
-from rutrackarr.rutracker.parse import SearchRow
+from rutrackarr.rutracker.parse import Forum, SearchRow
 from rutrackarr.torznab.idsearch import Resolver, SeriesContext, match
 
 _WORD = re.compile(r"[^\W_]+")
+CATALOGUE_TTL = 7 * 24 * 3600
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -88,10 +93,37 @@ class SearchCache:
         client: RuTrackerClient,
         ttl: Callable[[], float] = lambda: 3600,
         rss_ttl: Callable[[], float] = lambda: 300,
+        catalogue_path: Path | None = None,
     ) -> None:
         self._client, self._ttl, self._rss_ttl = client, ttl, rss_ttl
         self._data: dict[str, tuple[float, list[SearchRow]]] = {}
         self._locks: dict[str, asyncio.Lock] = {}
+        self._catalogue_path = catalogue_path
+        self.catalogue: Catalogue | None = None
+        self._catalogue_at = 0.0
+        if catalogue_path and catalogue_path.exists():
+            try:
+                forums = [Forum(*f) for f in json.loads(catalogue_path.read_text(encoding="utf-8"))]
+                self.catalogue = Catalogue(forums)
+                self._catalogue_at = catalogue_path.stat().st_mtime
+            except (ValueError, TypeError, OSError) as e:
+                log.warning("section catalogue unreadable: %s", e)
+
+    def _update_catalogue(self) -> None:
+        """Rebuild the section catalogue from the last search page, at most once a week."""
+        forums = self._client.last_forums
+        if not forums or time.time() - self._catalogue_at < CATALOGUE_TTL:
+            return
+        self.catalogue = Catalogue(forums)
+        self._catalogue_at = time.time()
+        if self._catalogue_path:
+            try:
+                rows = [[f.forum_id, f.name, f.parent_id, f.group] for f in forums]
+                self._catalogue_path.write_text(
+                    json.dumps(rows, ensure_ascii=False), encoding="utf-8"
+                )
+            except OSError as e:
+                log.warning("section catalogue not saved: %s", e)
 
     async def search(self, q: str) -> list[SearchRow]:
         key = " ".join(q.lower().split())
@@ -104,7 +136,11 @@ class SearchCache:
             hit = self._data.get(key)
             if hit and now - hit[0] < ttl:
                 return hit[1]
-            rows = await self._client.search(q)
+            # Video sections only: a common word ("Шерлок") otherwise fills the single result
+            # page with audiobooks and books, and the series never shows up.
+            forums = self.catalogue.video_ids() if self.catalogue else None
+            rows = await self._client.search(q, forums or None)
+            self._update_catalogue()
             self._data[key] = (time.monotonic(), rows)
             return rows
 
@@ -152,19 +188,31 @@ def _wanted(req: Request, rel: Release, year: int | None) -> bool:
 
 
 @functools.lru_cache(maxsize=4096)
-def _analyse(title_text: str, forum: str) -> tuple[ParsedTitle, Section, LanguageVerdict]:
+def _analyse(title_text: str, section: Section) -> tuple[ParsedTitle, Section, LanguageVerdict]:
     """Parse once per title: Sonarr asks for the same results dozens of times per search.
     The returned objects are shared and must not be modified."""
-    section = classify(forum)
     title = parse_title(title_text)
     return title, section, assess(title, section)
 
 
-def build(row: SearchRow, query: str | None, ctx: SeriesContext | None = None) -> Release | None:
+def section_of(row: SearchRow, catalogue: Catalogue | None) -> Section:
+    return (
+        catalogue.section(row.forum_id, row.forum)
+        if catalogue
+        else Catalogue([]).section(None, row.forum)
+    )
+
+
+def build(
+    row: SearchRow,
+    query: str | None,
+    ctx: SeriesContext | None = None,
+    catalogue: Catalogue | None = None,
+) -> Release | None:
     """A release for Sonarr/Radarr. With an ID search context, topics that aren't the series or
     film are dropped (None); season, episode offset, year, original language and name come
     from the metadata."""
-    title, section, language = _analyse(row.title, row.forum)
+    title, section, language = _analyse(row.title, section_of(row, catalogue))
     if ctx is None:
         name = release_name(title, section, language, query)
         return Release(row, title, section, language, name, categories(section, title))
@@ -203,14 +251,14 @@ async def run(cache: SearchCache, req: Request, resolver: Resolver | None = None
     if req.kind == "search" and req.absolute is None:
         q, req.absolute = absolute_episode(q)
     rows = await cache.search(q)
-    releases = [r for r in (build(row, q) for row in rows) if r]
+    releases = [r for r in (build(row, q, None, cache.catalogue) for row in rows) if r]
     if q:
         releases = [r for r in releases if matches_query(r.title, q)]
         words = q.split()
         if not any(r.section.video for r in releases) and len(words) > 2:
             # RuTracker's search is literal about words ("Journeys" vs "Journey's"): retry wider.
             rows = await cache.search(" ".join(words[:2]))
-            built = (build(row, q) for row in rows)
+            built = (build(row, q, None, cache.catalogue) for row in rows)
             releases = [r for r in built if r and matches_query(r.title, q)]
     return [r for r in releases if _wanted(req, r, year)]
 
@@ -221,5 +269,5 @@ async def _run_ids(cache: SearchCache, req: Request, ctx: SeriesContext) -> list
     for q in ctx.queries:
         for row in await cache.search(q):
             rows.setdefault(row.topic_id, row)
-    releases = [r for r in (build(row, None, ctx) for row in rows.values()) if r]
+    releases = [r for r in (build(row, None, ctx, cache.catalogue) for row in rows.values()) if r]
     return [r for r in releases if _wanted(req, r, None)]

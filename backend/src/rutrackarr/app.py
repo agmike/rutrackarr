@@ -80,6 +80,7 @@ def create_app(
     )
     app.state.torznab_cache = SearchCache(
         app.state.rutracker,
+        catalogue_path=settings.data_dir / "sections.json",
         ttl=lambda: 60 * int(svc.get("search.cache_minutes") or 0),
         rss_ttl=lambda: 60 * int(svc.get("search.rss_cache_minutes") or 0),
     )

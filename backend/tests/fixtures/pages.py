@@ -76,3 +76,26 @@ def row(topic_id: int, title: str, forum: str, forum_id: int = 1105, seeders: in
 <td class="row4 tor-size" data-ts_text="1073741824"><a class="tr-dl" href="dl.php?t={topic_id}">1 GB</a></td>
 <td data-ts_text="{seeders}"><b class="seedmed">{seeders}</b></td><td class="leechmed">1</td><td>10</td>
 <td data-ts_text="1700000000">x</td></tr>"""
+
+
+# The search form's section dropdown, as tracker.php serves it (abridged).
+FORUM_SELECT = """<select id="fs-main" name="f[]" multiple="multiple" size="18">
+<option id="fs--1" value="-1">&nbsp;Все имеющиеся</option>
+<optgroup label="&nbsp;Кино, Видео и ТВ">
+	<option id="fs-22" value="22"  class='root_forum has_sf' >Наше кино&nbsp;</option>
+	<option id="fs-941" value="941"  class='fp-22' > |- Кино СССР&nbsp;</option>
+	<option id="fs-7" value="7"  class='root_forum has_sf' >Зарубежное кино&nbsp;</option>
+	<option id="fs-187" value="187"  class='fp-7' > |- Классика мирового кинематографа&nbsp;</option>
+	<option id="fs-2093" value="2093"  class='fp-7' > |- Фильмы 2011-2015&nbsp;</option>
+	<option id="fs-185" value="185"  class='fp-7' > |- Звуковые дорожки и Переводы&nbsp;</option>
+	<option id="fs-33" value="33"  class='root_forum has_sf' >Аниме&nbsp;</option>
+	<option id="fs-2544" value="2544"  class='fp-33' > |- Ван-Пис&nbsp;</option>
+</optgroup>
+<optgroup label="&nbsp;Сериалы">
+	<option id="fs-189" value="189"  class='root_forum has_sf' >Зарубежные сериалы&nbsp;</option>
+	<option id="fs-842" value="842"  class='fp-189' > |- Новинки и сериалы в стадии показа&nbsp;</option>
+</optgroup>
+<optgroup label="&nbsp;Аудиокниги">
+	<option id="fs-499" value="499"  class='root_forum' >[Аудио] Зарубежные детективы&nbsp;</option>
+</optgroup>
+</select>"""

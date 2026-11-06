@@ -237,7 +237,9 @@ async def test_cache_ttls(monkeypatch):
     calls: list[str] = []
 
     class Client:
-        async def search(self, q):
+        last_forums: list = []  # noqa: RUF012
+
+        async def search(self, q, forums=None):
             calls.append(q)
             return []
 

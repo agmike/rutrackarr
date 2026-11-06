@@ -178,3 +178,40 @@ def search_rows(html: str) -> list[SearchRow]:
             )
         )
     return rows
+
+
+@dataclass(frozen=True)
+class Forum:
+    forum_id: int
+    name: str
+    parent_id: int | None  # None for a top-level section
+    group: str  # the dropdown's group ("Кино, Видео и ТВ", "Сериалы", …)
+
+
+def forums(html: str) -> list[Forum]:
+    """RuTracker's section list, from the search form's dropdown (on every tracker.php page)."""
+    tree = HTMLParser(html)
+    select = tree.css_first("select#fs-main")
+    if select is None:
+        return []
+    out: list[Forum] = []
+    for group in select.css("optgroup"):
+        label = " ".join((group.attributes.get("label") or "").split())
+        root: int | None = None
+        for opt in group.css("option"):
+            value = (opt.attributes.get("value") or "").strip()
+            if not value.isdigit():
+                continue
+            fid = int(value)
+            cls = opt.attributes.get("class") or ""
+            name = _text(opt).replace("|-", "", 1).strip()
+            if "root_forum" in cls:
+                root = fid
+                out.append(Forum(fid, name, None, label))
+            else:
+                parent = next(
+                    (int(c[3:]) for c in cls.split() if c.startswith("fp-") and c[3:].isdigit()),
+                    root,
+                )
+                out.append(Forum(fid, name, parent, label))
+    return out

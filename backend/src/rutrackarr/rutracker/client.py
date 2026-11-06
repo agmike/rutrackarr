@@ -37,6 +37,8 @@ def search_term(query: str) -> str:
 
 
 class RuTrackerClient:
+    last_forums: list[parse.Forum] = []  # noqa: RUF012 — the section list from the last search page
+
     def __init__(self, http: RuTrackerHttp, store: SessionStore, credentials) -> None:  # type: ignore[no-untyped-def]
         self._http = http
         self._store = store
@@ -150,6 +152,7 @@ class RuTrackerClient:
                 f"Unexpected search page: {parse.page_summary(page.text, page.status_code)}"
             )
         self._store.update(last_ok_at=datetime.now(UTC))
+        self.last_forums = parse.forums(page.text) or self.last_forums
         return parse.search_rows(page.text)
 
     async def download(self, topic_id: int) -> bytes:
