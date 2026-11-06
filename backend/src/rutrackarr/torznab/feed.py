@@ -28,7 +28,7 @@ def caps(version: str) -> bytes:
     # to titles. (v0.6.1 dropped q to save requests — Sonarr then skipped anime entirely.)
     ET.SubElement(searching, "search", available="yes", supportedParams="q")
     ET.SubElement(searching, "tv-search", available="yes", supportedParams="q,season,ep,tvdbid")
-    ET.SubElement(searching, "movie-search", available="yes", supportedParams="q")
+    ET.SubElement(searching, "movie-search", available="yes", supportedParams="q,imdbid,tmdbid")
     cats = ET.SubElement(root, "categories")
     for cid, (name, subs) in CATEGORIES.items():
         cat = ET.SubElement(cats, "category", id=str(cid), name=name)
@@ -71,8 +71,9 @@ def results(releases: list[Release], download_url, topic_url) -> bytes:  # type:
         }
         for cid in rel.categories:
             ET.SubElement(item, f"{{{TORZNAB_NS}}}attr", name="category", value=str(cid))
-        if rel.tvdbid:
-            ET.SubElement(item, f"{{{TORZNAB_NS}}}attr", name="tvdbid", value=str(rel.tvdbid))
+        for attr in ("tvdbid", "tmdbid", "imdbid"):
+            if value := getattr(rel, attr):
+                ET.SubElement(item, f"{{{TORZNAB_NS}}}attr", name=attr, value=str(value))
         for name, value in attrs.items():
             ET.SubElement(item, f"{{{TORZNAB_NS}}}attr", name=name, value=str(value))
     return _xml(rss)

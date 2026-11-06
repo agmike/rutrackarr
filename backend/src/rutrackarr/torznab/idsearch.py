@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 
 from rutrackarr.metadata.animelist import AnimeEntry, AnimeList
 from rutrackarr.metadata.shikimori import Shikimori
-from rutrackarr.metadata.sonarr import SonarrTitles
+from rutrackarr.metadata.sonarr import RadarrTitles, SonarrTitles
+from rutrackarr.metadata.tmdb import Tmdb, TmdbTitle
 from rutrackarr.releases.title import ParsedTitle
 
 MAX_QUERIES = 4
@@ -49,11 +50,17 @@ class Entry:
 
 @dataclass
 class SeriesContext:
-    tvdb_id: int
-    title: str  # Sonarr's title (what releases are named after)
-    entries: list[Entry]
-    other_names: set[str]  # normalised Sonarr title + alternate titles
+    tvdb_id: int | None
+    title: str  # Sonarr's/Radarr's title (what releases are named after)
+    entries: list[Entry]  # anime entries (seasons); empty for other series and films
+    other_names: set[str]  # normalised Sonarr/Radarr/TMDb titles
     queries: list[str]
+    kind: str = "tv"  # "tv" | "movie"
+    original_language: str | None = None  # ISO 639-2, from TMDb
+    season_years: dict[int, int] = field(default_factory=dict)  # season → air year (TMDb)
+    year: int | None = None  # the film's year (Radarr/TMDb)
+    tmdb_id: int | None = None
+    imdb_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -75,9 +82,27 @@ def _entry(e: AnimeEntry, names: list[str], russian: str, romaji: str) -> Entry:
     )
 
 
+def _unique(queries: list[str | None]) -> list[str]:
+    seen: set[str] = set()
+    out = []
+    for q in queries:
+        if q and norm(q) and norm(q) not in seen:
+            seen.add(norm(q))
+            out.append(q)
+    return out[:MAX_QUERIES]
+
+
 class Resolver:
-    def __init__(self, animelist: AnimeList, shikimori: Shikimori, sonarr: SonarrTitles) -> None:
+    def __init__(
+        self,
+        animelist: AnimeList,
+        shikimori: Shikimori,
+        sonarr: SonarrTitles,
+        tmdb: Tmdb | None = None,
+        radarr: RadarrTitles | None = None,
+    ) -> None:
         self._list, self._shiki, self._sonarr = animelist, shikimori, sonarr
+        self._tmdb, self._radarr = tmdb, radarr
 
     async def tv(self, tvdb_id: int, season: int | None) -> SeriesContext | None:
         series = await self._sonarr.by_tvdb(tvdb_id)
@@ -91,23 +116,55 @@ class Resolver:
             names = await self._shiki.anime(e.mal_id)
             if names:
                 entries.append(_entry(e, names.names, names.russian, names.romaji))
-        title = series.title if series else (entries[0].romaji if entries else "")
-        if not title:
-            return None
         other = {norm(n) for n in ([series.title, *series.alternate_titles] if series else [])}
-        queries: list[str] = []
+        if not entries:  # not anime (or not in the list): TMDb's Russian and original titles
+            return await self._tv_tmdb(tvdb_id, series, other)
+        title = series.title if series else entries[0].romaji
+        queries: list[str | None] = []
         for entry in entries:
             if season is not None and entry.season != season:
                 continue
             queries += [entry.russian, entry.romaji]
         queries += [series.title] if series else []
-        seen: set[str] = set()
-        unique = []
-        for q in queries:
-            if q and norm(q) not in seen:
-                seen.add(norm(q))
-                unique.append(q)
-        return SeriesContext(tvdb_id, title, entries, {o for o in other if o}, unique[:MAX_QUERIES])
+        return SeriesContext(tvdb_id, title, entries, {o for o in other if o}, _unique(queries))
+
+    async def _tv_tmdb(self, tvdb_id: int, series, other: set[str]) -> SeriesContext | None:  # type: ignore[no-untyped-def]
+        tm = await self._tmdb.tv_by_tvdb(tvdb_id) if self._tmdb else None
+        title = series.title if series else (tm.english or tm.original if tm else "")
+        if not title:
+            return None
+        names = {norm(n) for n in (tm.names if tm else [])} | other
+        queries = [*([tm.russian, tm.original] if tm else []), series.title if series else None]
+        return SeriesContext(
+            tvdb_id, title, [], {n for n in names if n}, _unique(queries),
+            original_language=tm.original_language if tm else None,
+            season_years=tm.season_years if tm else {},
+            tmdb_id=tm.tmdb_id if tm else None,
+        )  # fmt: skip
+
+    async def movie(self, tmdb_id: int | None, imdb_id: str | None) -> SeriesContext | None:
+        if self._tmdb is None:
+            return None
+        tm: TmdbTitle | None = None
+        if tmdb_id:
+            tm = await self._tmdb.details("movie", tmdb_id)
+        elif imdb_id:
+            tm = await self._tmdb.movie_by_imdb(imdb_id)
+        if tm is None:
+            return None
+        radarr = await self._radarr.by_tmdb(tm.tmdb_id) if self._radarr else None
+        title = radarr.title if radarr else (tm.english or tm.original)
+        names = [
+            *tm.names,
+            *([radarr.title, radarr.original_title, *radarr.alternate_titles] if radarr else []),
+        ]
+        return SeriesContext(
+            None, title, [], {n for n in map(norm, names) if n},
+            _unique([tm.russian, tm.original, title]),
+            kind="movie", original_language=tm.original_language,
+            year=(radarr.year if radarr and radarr.year else tm.year),
+            tmdb_id=tm.tmdb_id, imdb_id=tm.imdb_id or imdb_id,
+        )  # fmt: skip
 
 
 def match(ctx: SeriesContext, t: ParsedTitle) -> Match | None:

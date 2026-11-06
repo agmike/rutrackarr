@@ -39,7 +39,7 @@ def name(title: str, forum: str, query: str | None = None) -> str:
 
 def test_release_names():
     assert name(FRIEREN_S2, "Аниме (HD Video)", "Frieren Beyond Journeys End") == (
-        "Frieren Beyond Journeys End S02 1080p BluRay JAPANESE RUSSIAN OrigSubs RusVoice RusSubs "
+        "Frieren Beyond Journeys End S02 1080p BluRay JAPANESE RUSSIAN OrigAudio OrigSubs RusVoice RusSubs "
         "RTA-T1 -RuTracker"
     )
     assert (
@@ -47,10 +47,10 @@ def test_release_names():
             "Большой Куш / One Piece / Ван-Пис [TV] [1156-1180 из 1000+] [RUS(ext), JAP+Sub] [1999, WEB-DL] [1080p]",
             "Ван-Пис",
         )
-        == "One Piece - 1156-1180 1080p WEB-DL JAPANESE RUSSIAN OrigSubs RusVoice RusSubs RTA-T1 -RuTracker"
+        == "One Piece - 1156-1180 1080p WEB-DL JAPANESE RUSSIAN OrigAudio OrigSubs RusVoice RusSubs RTA-T1 -RuTracker"
     )
     assert name(INTERSTELLAR, "Зарубежное кино (UHD Video)") == (
-        "Interstellar 2014 2160p BluRay REMUX HDR10 DV ENGLISH RUSSIAN OrigSubs RusDub RusSubs EngSubs "
+        "Interstellar 2014 2160p BluRay REMUX HDR10 DV ENGLISH RUSSIAN OrigAudio OrigSubs RusDub RusSubs EngSubs "
         "RTA-T1 -RuTracker"
     )
     assert (
@@ -59,14 +59,14 @@ def test_release_names():
             "WEB-DLRip-AVC] DVO (Кубик в Кубе) + Original",
             "Сериалы Великобритании и Ирландии",
         )
-        == "Young Sherlock S01E01-E06 WEBRip h264 RUSSIAN RusDVO RTA-T2 -RuTracker"
+        == "Young Sherlock S01E01-E06 WEBRip h264 RUSSIAN OrigAudio RusDVO RTA-T2 -RuTracker"
     )
     assert (
         name(
             "Слово пацана. Кровь на асфальте / Сезон: 1 / Серии: 1-8 из 8 (Жора Крыжовников) [2023, драма, WEBRip 1080p] + Sub (Rus)",
             "Русские сериалы (HD Video)",
         )
-        == "Слово пацана. Кровь на асфальте S01 1080p WEBRip RUSSIAN RusSubs RTA-T1 -RuTracker"
+        == "Слово пацана. Кровь на асфальте S01 1080p WEBRip RUSSIAN OrigAudio RusSubs RTA-T1 -RuTracker"
     )
 
 
@@ -129,7 +129,7 @@ def test_tvsearch_filters_and_renames(api, net):  # noqa: F811
     }
     found = items(api.get("/torznab/api", params=params))
     assert [i.findtext("title") for i in found] == [
-        "Frieren Beyond Journeys End S02 1080p BluRay JAPANESE RUSSIAN OrigSubs RusVoice RusSubs "
+        "Frieren Beyond Journeys End S02 1080p BluRay JAPANESE RUSSIAN OrigAudio OrigSubs RusVoice RusSubs "
         "RTA-T1 -RuTracker"
     ]
     item = found[0]

@@ -27,6 +27,14 @@ def _int(value: str | None) -> int | None:
     return int(value) if value and value.strip().isdigit() else None
 
 
+def _imdb(value: str | None) -> str | None:
+    """Radarr sends "tt0816692" or just the digits."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    return v if v.startswith("tt") else f"tt{int(v):07d}" if v.isdigit() else None
+
+
 @router.get("/api")
 async def api(request: Request) -> Response:
     p = request.query_params
@@ -46,6 +54,8 @@ async def api(request: Request) -> Response:
         ep=_int(p.get("ep")),
         cats=[int(c) for c in p.get("cat", "").split(",") if c.strip().isdigit()],
         tvdbid=_int(p.get("tvdbid")),
+        tmdbid=_int(p.get("tmdbid")),
+        imdbid=_imdb(p.get("imdbid")),
     )
     try:
         releases = await run(request.app.state.torznab_cache, req, request.app.state.resolver)

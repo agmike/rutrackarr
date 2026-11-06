@@ -127,12 +127,19 @@ def is_absolute(t: ParsedTitle, section: Section) -> bool:
     return (e.first or 1) > 1 and (e.total is None or (e.last or 0) > 100)
 
 
-def numbering(t: ParsedTitle, section: Section, season: int | None = None, offset: int = 0) -> str:
+def numbering(
+    t: ParsedTitle,
+    section: Section,
+    season: int | None = None,
+    offset: int = 0,
+    year: int | None = None,
+) -> str:
     """S02 / S02E01-E08 / S01E08 for series, "- 1156-1180" for long anime, the year for movies.
     `season`/`offset` come from metadata (the TVDB season and episode offset of the anime entry
     the topic belongs to) and win over what the title says."""
     if is_movie(section, t):
-        return str(t.year) if t.year else ""
+        year = year or t.year
+        return str(year) if year else ""
     e = t.episodes
     if is_absolute(t, section) and e:
         return f"- {e.first:03d}" if e.first == e.last else f"- {e.first:03d}-{e.last:03d}"
@@ -147,13 +154,23 @@ def numbering(t: ParsedTitle, section: Section, season: int | None = None, offse
     return f"{s}E{first:02d}-E{last:02d}"
 
 
-def language_tokens(t: ParsedTitle, verdict: LanguageVerdict) -> list[str]:
+def language_tokens(
+    t: ParsedTitle, verdict: LanguageVerdict, original_language: str | None = None
+) -> list[str]:
+    """`original_language` (ISO 639-2, from TMDb) names an "Original" track whose language the
+    title doesn't state — Sonarr/Radarr's "Language: Not Original" checks need the word."""
+    has_original = verdict.original is not None or any(a.original for a in t.audio)
     words: list[str] = []
-    for code in [verdict.original, *(a.lang for a in t.audio)]:
+    stated = [verdict.original, *(a.lang for a in t.audio)]
+    if has_original and original_language and not any(a.original and a.lang for a in t.audio):
+        stated.insert(0, original_language)
+    for code in stated:
         word = _LANG_WORD.get(code or "")
         if word and word not in words:
             words.append(word)
     tokens: list[str] = []
+    if has_original and verdict.label != "No dialogue":
+        tokens.append("OrigAudio")  # the original track is there, with or without subtitles
     if verdict.label == "No dialogue":
         tokens.append("NoDialogue")
     elif verdict.tier == 1 and verdict.original != "rus":
@@ -184,6 +201,8 @@ def release_name(
     series_title: str | None = None,
     season: int | None = None,
     offset: int = 0,
+    year: int | None = None,
+    original_language: str | None = None,
 ) -> str:
     """`series_title` is Sonarr's own title of the series an ID search resolved the topic to.
     Otherwise `query`, the (cleaned) title Sonarr/Radarr searched for — one of the series' own
@@ -196,11 +215,11 @@ def release_name(
         name = query
     else:
         name = pick_name(t, query or None)
-    parts = [name, numbering(t, section, season, offset)]
+    parts = [name, numbering(t, section, season, offset, year)]
     resolution = t.resolution or ("2160p" if t.uhd else None)
     parts += [resolution or "", _SOURCE.get(t.source or "", t.source or "")]
     parts.append(_CODEC.get(t.codec or "", ""))
     parts += [_HDR[h] for h in t.hdr if h in _HDR]
-    parts += language_tokens(t, verdict)
+    parts += language_tokens(t, verdict, original_language)
     name = " ".join(p for p in parts if p)
     return f"{' '.join(name.split())} -RuTracker"

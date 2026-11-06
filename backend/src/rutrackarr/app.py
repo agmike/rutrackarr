@@ -17,7 +17,8 @@ from rutrackarr.db.engine import make_engine, make_sessionmaker, migrate
 from rutrackarr.metadata.animelist import AnimeList
 from rutrackarr.metadata.cache import MetadataCache
 from rutrackarr.metadata.shikimori import Shikimori
-from rutrackarr.metadata.sonarr import SonarrTitles
+from rutrackarr.metadata.sonarr import RadarrTitles, SonarrTitles
+from rutrackarr.metadata.tmdb import Tmdb
 from rutrackarr.rutracker.client import RuTrackerClient
 from rutrackarr.rutracker.http import RuTrackerHttp
 from rutrackarr.rutracker.ratelimit import RequestSpacer
@@ -74,6 +75,8 @@ def create_app(
         AnimeList(settings.data_dir / "anime-list.json", transport, user_agent=ua),
         Shikimori(MetadataCache(sessions), transport, user_agent=ua),
         SonarrTitles(lambda: svc.get("sonarr.url"), lambda: svc.get("sonarr.api_key"), transport),
+        Tmdb(lambda: svc.get("tmdb.read_access_token"), MetadataCache(sessions), transport),
+        RadarrTitles(lambda: svc.get("radarr.url"), lambda: svc.get("radarr.api_key"), transport),
     )
     app.state.torznab_cache = SearchCache(
         app.state.rutracker,

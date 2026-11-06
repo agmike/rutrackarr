@@ -28,6 +28,8 @@ class Request:
     absolute: int | None = None  # anime absolute episode, from the end of a t=search query
     cats: list[int] = field(default_factory=list)
     tvdbid: int | None = None
+    tmdbid: int | None = None
+    imdbid: str | None = None
 
 
 @dataclass
@@ -40,6 +42,8 @@ class Release:
     categories: list[int]
     season: int | None = None  # from metadata (ID search), wins over the title
     tvdbid: int | None = None
+    tmdbid: int | None = None
+    imdbid: str | None = None
 
 
 def absolute_episode(q: str) -> tuple[str, int | None]:
@@ -157,8 +161,9 @@ def _analyse(title_text: str, forum: str) -> tuple[ParsedTitle, Section, Languag
 
 
 def build(row: SearchRow, query: str | None, ctx: SeriesContext | None = None) -> Release | None:
-    """A release for Sonarr/Radarr. With an ID search context, topics that aren't the series
-    are dropped (None) and season, episode offset and name come from the metadata."""
+    """A release for Sonarr/Radarr. With an ID search context, topics that aren't the series or
+    film are dropped (None); season, episode offset, year, original language and name come
+    from the metadata."""
     title, section, language = _analyse(row.title, row.forum)
     if ctx is None:
         name = release_name(title, section, language, query)
@@ -166,22 +171,34 @@ def build(row: SearchRow, query: str | None, ctx: SeriesContext | None = None) -
     m = match(ctx, title)
     if m is None:
         return None
-    season = None if is_absolute(title, section) else m.season
+    movie = ctx.kind == "movie"
+    if movie and ctx.year and title.year and abs(title.year - ctx.year) > 1:
+        return None  # same name, different film (remakes)
+    season = None if movie or is_absolute(title, section) else m.season
+    if season is None and not movie and title.season is None and title.year and ctx.season_years:
+        # A topic without a season number: the season that aired that year.
+        season = next((n for n, y in sorted(ctx.season_years.items()) if y == title.year), None)
     name = release_name(
-        title, section, language, query, series_title=ctx.title, season=season, offset=m.offset
-    )
+        title, section, language, query,
+        series_title=ctx.title, season=season, offset=m.offset,
+        year=ctx.year if movie else None, original_language=ctx.original_language,
+    )  # fmt: skip
     return Release(
-        row, title, section, language, name, categories(section, title), season, ctx.tvdb_id
-    )
+        row, title, section, language, name, categories(section, title),
+        season, ctx.tvdb_id, ctx.tmdb_id if movie else None, ctx.imdb_id if movie else None,
+    )  # fmt: skip
 
 
 async def run(cache: SearchCache, req: Request, resolver: Resolver | None = None) -> list[Release]:
-    if req.tvdbid and resolver is not None:
+    ctx = None
+    if resolver is not None and req.kind != "movie" and req.tvdbid:
         ctx = await resolver.tv(req.tvdbid, req.season)
-        if ctx is not None:
-            return await _run_ids(cache, req, ctx)
-        if not req.q:
-            return []  # nothing known about this id and no title to fall back on
+    elif resolver is not None and req.kind == "movie" and (req.tmdbid or req.imdbid):
+        ctx = await resolver.movie(req.tmdbid, req.imdbid)
+    if ctx is not None:
+        return await _run_ids(cache, req, ctx)
+    if (req.tvdbid or req.tmdbid or req.imdbid) and not req.q:
+        return []  # nothing known about this id and no title to fall back on
     q, year = clean_query(req.q)
     if req.kind == "search" and req.absolute is None:
         q, req.absolute = absolute_episode(q)
