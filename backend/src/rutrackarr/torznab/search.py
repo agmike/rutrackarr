@@ -8,7 +8,7 @@ import math
 import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from rutrackarr.releases.language import LanguageVerdict, assess
@@ -285,6 +285,10 @@ def _build(
     movie = ctx.kind == "movie"
     if movie and ctx.year and title.year and abs(title.year - ctx.year) > 1:
         return None, f"a different film: {title.year}, not {ctx.year}"  # remakes
+    if movie and not is_movie(section, title) and section.kind == "anime" and _single(title):
+        # Anime films share RuTracker's anime sections with series and are often filed as OVA
+        # ("Pale Cocoon [OVA]"): one that is this film by name and year is the film.
+        title = replace(title, kinds=[*title.kinds, "Movie"])
     season = None if movie or is_absolute(title, section) else m.season
     if (
         season is None
@@ -363,6 +367,12 @@ async def run(
         # RuTracker's search is literal about words ("Journeys" vs "Journey's"): retry wider.
         releases = await search(" ".join(words[:2]))
     return _keep(req, releases, year, trace)
+
+
+def _single(t: ParsedTitle) -> bool:
+    """No episode range beyond one: a film, a one-off OVA or special."""
+    e = t.episodes
+    return e is None or ((e.last or 1) <= 1 and (e.total or 1) <= 1)
 
 
 def _keep(req: Request, releases: list[Release], year: int | None, trace: Trace) -> list[Release]:

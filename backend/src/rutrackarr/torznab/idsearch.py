@@ -84,11 +84,17 @@ def _entry(e: AnimeEntry, names: list[str], russian: str, romaji: str) -> Entry:
     )
 
 
+_SEARCHABLE = re.compile(r"[0-9A-Za-zА-Яа-яЁё]")
+
+
 def _unique(queries: list[str | None]) -> list[str]:
+    """Distinct titles RuTracker can search for: its search keeps only Latin and Cyrillic
+    letters and digits, so a Japanese-only title (TMDb's original) would be an empty search —
+    RuTracker's newest topics."""
     seen: set[str] = set()
     out = []
     for q in queries:
-        if q and norm(q) and norm(q) not in seen:
+        if q and norm(q) and norm(q) not in seen and _SEARCHABLE.search(q):
             seen.add(norm(q))
             out.append(q)
     return out[:MAX_QUERIES]
@@ -208,7 +214,7 @@ def with_override(ctx: SeriesContext, ov: Any) -> SeriesContext:
     queries: list[str] = []
     seen: set[str] = set()
     for q in [*extra, *([] if ov.replace_titles else ctx.queries)]:
-        if norm(q) not in seen:
+        if norm(q) not in seen and _SEARCHABLE.search(q):
             seen.add(norm(q))
             queries.append(q)
     return replace(

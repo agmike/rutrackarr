@@ -115,3 +115,49 @@ def test_imdb_digits_accepted(api, net):  # noqa: F811
     net.on("GET", "/forum/tracker.php", html(pages.search_page("")))
     r = api.get("/torznab/api", params={"t": "movie", "imdbid": "0816692", "apikey": key(api)})
     assert r.status_code == 200 and any(c.url.path == "/3/find/tt0816692" for c in net.calls)
+
+
+PALE_COCOON = {
+    "id": 20683, "title": "Бледный кокон", "original_title": "ペイル・コクーン", "original_language": "ja",
+    "release_date": "2005-12-01", "imdb_id": "tt1506448",
+    "translations": {"translations": [{"iso_639_1": "en", "data": {"title": "Pale Cocoon"}}]},
+    "alternative_titles": {"titles": []},
+}  # fmt: skip
+
+
+def test_anime_film_filed_as_ova_is_a_film(api, net):  # noqa: F811
+    configure(api, net)
+    net.on("GET", "/3/movie/20683", httpx.Response(200, json=PALE_COCOON))
+    net.on(
+        "GET",
+        "/radarr/api/v3/movie",
+        httpx.Response(200, json=[{"title": "Pale Cocoon", "year": 2005}]),
+    )
+    rows = "".join(
+        [
+            pages.row(7, "Бледный Кокон / Aoi Tamago / Pale Cocoon [OVA] [RUS(int), JAP+Sub] [2005, драма, BDRip] [1080p]", "Аниме (HD Video)", forum_id=1105),
+            pages.row(8, "Бледный Кокон / Pale Cocoon [TV] [1-12 из 12] [JAP+Sub] [2005, драма, BDRip] [1080p]", "Аниме (HD Video)", forum_id=1105),
+        ]
+    )  # fmt: skip
+    seen: list[str] = []
+
+    def tracker(request):
+        seen.append(request.url.params.get("nm", ""))
+        return html(pages.search_page(rows))
+
+    net.on("GET", "/forum/tracker.php", tracker)
+    found = items(
+        api.get(
+            "/torznab/api",
+            params={"t": "movie", "tmdbid": "20683", "cat": "2000,2040", "apikey": key(api)},
+        )
+    )
+    titles = [i.findtext("title") for i in found]
+    assert len(titles) == 1 and titles[0].startswith("Pale Cocoon 2005 1080p BluRay")  # a film name
+    cats = [
+        a.get("value") for a in found[0].findall("torznab:attr", NS) if a.get("name") == "category"
+    ]
+    assert "2000" in cats  # film categories, so Radarr takes it
+    assert (
+        len(seen) == 2
+    )  # the Japanese title isn't searched (it would be RuTracker's newest topics)
