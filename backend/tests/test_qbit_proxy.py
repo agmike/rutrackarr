@@ -281,7 +281,7 @@ def test_second_release_reuses_topic(api, net, qbit):  # noqa: F811
     assert api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json() == []
 
 
-def test_set_category_moves_only_the_release(api, net, qbit):  # noqa: F811
+def test_set_category_moves_the_release_and_its_topic(api, net, qbit):  # noqa: F811
     data, marked = serve(api, net)
     login(api)
     add(api, marked)
@@ -293,7 +293,8 @@ def test_set_category_moves_only_the_release(api, net, qbit):  # noqa: F811
     assert api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json() == []
     items = api.get("/qbit/api/v2/torrents/info", params={"category": "imported"}).json()
     assert [t["hash"] for t in items] == [virtual]
-    assert qbit.torrents[torrent.read(data).info_hash.lower()]["category"] == CATEGORY
+    # Its only release moved: the topic follows (hidden from both views either way).
+    assert qbit.torrents[torrent.read(data).info_hash.lower()]["category"] == "imported"
 
 
 def test_other_torrents_pass_through(api, net, qbit):  # noqa: F811
@@ -316,3 +317,30 @@ def test_old_qbittorrent_login(api, qbit):  # noqa: F811
     qbit.modern_login = False  # qBittorrent < 5.2: 200 "Ok."
     login(api)
     assert api.get("/qbit/api/v2/app/webapiVersion").text == "2.11.4"
+
+
+def test_topic_follows_releases_to_post_import_category(api, net, qbit):  # noqa: F811
+    data, first = serve(api, net)
+    login(api)
+    add(api, first)
+    _, second = serve(api, net, name=RELEASE.replace("S01", "S01E02"))
+    add(api, second)
+    real = torrent.read(data).info_hash.lower()
+    v1, v2 = (torrent.read(m).info_hash.lower() for m in (first, second))
+    done = "sonarr/completed"
+
+    # One release imported: the topic stays (the other still uses it).
+    api.post("/qbit/api/v2/torrents/setCategory", data={"hashes": v1, "category": done})
+    assert qbit.torrents[real]["category"] == CATEGORY
+    # All imported: the topic follows.
+    api.post("/qbit/api/v2/torrents/setCategory", data={"hashes": v2, "category": done})
+    assert qbit.torrents[real]["category"] == done
+    assert api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json() == []
+
+    # A new release of the topic: back to the download category, not added again.
+    _, third = serve(api, net, name=RELEASE.replace("S01", "S01E03"))
+    assert add(api, third).text == "Ok."
+    assert len(qbit.added) == 1
+    assert qbit.torrents[real]["category"] == CATEGORY
+    items = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
+    assert [t["name"] for t in items] == [RELEASE.replace("S01", "S01E03")]

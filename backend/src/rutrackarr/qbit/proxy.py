@@ -191,6 +191,9 @@ class _Proxy:
             await self._rename(rhash, file_tag(release))
             if not want_stopped:
                 await self._start(rhash)
+        elif category and present[0].get("category") != category:
+            # In use again (a new release of a finished topic): back to the download category.
+            await self._move(rhash, category)
         self.store.added(virtual_info, release, rhash, category)
         log.info("qbit add: %s → %s (%s)", release, rhash, "new" if not present else "present")
         return True
@@ -213,6 +216,11 @@ class _Proxy:
                 )
                 if r.status_code != 200:
                     log.warning("qbit rename %s: HTTP %s", old, r.status_code)
+
+    async def _move(self, rhash: str, category: str) -> None:
+        r = await self.qbit.post("torrents/setCategory", hashes=rhash, category=category)
+        if r.status_code != 200:
+            log.warning("qbit move %s to %r: HTTP %s", rhash, category, r.status_code)
 
     async def _start(self, rhash: str) -> None:
         r = await self.qbit.post("torrents/start", hashes=rhash)
@@ -259,6 +267,14 @@ class _Proxy:
         for h in hashes:
             if h.upper() in virtual:
                 self.store.set_category(h, category)
+        # A topic follows its releases (e.g. to the post-import category) once all of them
+        # are in the same category; while one is still elsewhere, the topic stays put.
+        reals = {virtual[h.upper()].real_hash for h in hashes if h.upper() in virtual}
+        active = [d for d in self.store.active() if d.real_hash]
+        for real in sorted(r for r in reals if r):
+            cats = {d.category or "" for d in active if d.real_hash == real}
+            if cats == {category} and category:
+                await self._move(real.lower(), category)
         rest = [h for h in hashes if h and h.upper() not in virtual]
         if rest:
             r = await self.qbit.post(

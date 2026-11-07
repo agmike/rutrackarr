@@ -59,7 +59,11 @@ stopped, its video files get the release's language tags appended (`… OrigAudi
 RTA-T1 -RuTracker.mkv`), and then it starts. Everything else is passed through unchanged.
 Each grab is its own download in Sonarr (several grabs of one topic share one torrent), and
 finished downloads are reported as still seeding, so files are hardlinked or copied, never
-moved away from a torrent that keeps seeding.
+moved away from a torrent that keeps seeding. With a post-import category set, the topic's
+torrent moves there once all its releases have (and back when a new release of it is grabbed).
+Use categories that don't contain each other: in qBittorrent 5.2 a category also lists its
+subcategories, so e.g. `sonarr/default`, `sonarr/rutracker`, `sonarr/completed` — not `sonarr`
+and `sonarr/rutracker`.
 
 ## Security
 
