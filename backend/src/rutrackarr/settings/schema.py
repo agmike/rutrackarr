@@ -47,6 +47,9 @@ FIELDS: dict[str, FieldDef] = {
     "qui.token": FieldDef("secret"),
     # Tracked topics: track what Sonarr/Radarr grab; qBittorrent category for topics tracked by
     # hand (one no Sonarr/Radarr client asks for)
+    # A single-episode grab of a topic downloads only that episode (and its tracks), not the
+    # whole topic; later grabs from it add theirs
+    "download.only_grabbed": FieldDef("choice", "off", choices=("on", "off")),
     "tracking.auto_track": FieldDef("choice", "on", choices=("on", "off")),
     "tracking.category": FieldDef("string", "rutrackarr/tracked"),
     # Update checks: RuTracker's per-section feeds (one request per section with tracked

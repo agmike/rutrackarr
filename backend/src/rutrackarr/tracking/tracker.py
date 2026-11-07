@@ -53,7 +53,7 @@ class Tracked:
     seeders: int
     info_hash: str
     source: str  # manual | grab
-    state: str  # active | gone
+    state: str  # active | paused (Sonarr/Radarr don't monitor it) | gone
     content_kind: str | None
     content_id: int | None
     season: int | None
@@ -115,7 +115,7 @@ class Tracker:
         with self._sessions() as s:
             q = select(TrackedRow).order_by(TrackedRow.created_at.desc())
             if not include_gone:
-                q = q.where(TrackedRow.state == "active")
+                q = q.where(TrackedRow.state != "gone")
             return [_from_row(r) for r in s.scalars(q)]
 
     def get(self, topic_id: int) -> Tracked | None:
@@ -132,6 +132,10 @@ class Tracker:
         """The torrent belongs to a topic tracked by hand (RuTrackarr's, not Sonarr's)."""
         t = self.by_hash(rhash)
         return t is not None and t.manual and t.state == "active"
+
+    def searchable(self) -> list[Tracked]:
+        """Tracked topics that take part in searches (active and paused)."""
+        return self.all(include_gone=False)
 
     def search_rows(self) -> list[SearchRow]:
         return [t.row() for t in self.all(include_gone=False)]
@@ -237,7 +241,7 @@ class Tracker:
     def gone(self, rhash: str) -> None:
         """The topic's torrent disappeared from qBittorrent."""
         t = self.by_hash(rhash)
-        if t is None or t.state != "active":
+        if t is None or t.state == "gone":
             return
         self._save(topic_id=t.topic_id, state="gone")
         self._activity.event(
@@ -284,6 +288,45 @@ class Tracker:
         )  # fmt: skip
         return notes
 
+    # --- following Sonarr/Radarr ---------------------------------------------------------------
+
+    async def sync_library(self) -> dict[str, int]:
+        """Grabbed topics follow their series/film in Sonarr/Radarr: deleted there → untracked
+        (the torrent stays), unmonitored → paused (no update checks), monitored again → active.
+        Topics tracked by hand are RuTrackarr's own and left alone. → counts of what changed."""
+        done = {"untracked": 0, "paused": 0, "resumed": 0}
+        cache: dict[tuple[str, int], dict[str, Any] | bool | None] = {}
+        for t in self.all(include_gone=False):
+            if t.manual or not t.content_id or t.content_kind not in ("tv", "movie"):
+                continue
+            key = (t.content_kind, t.content_id)
+            if key not in cache:
+                cache[key] = await library_item(self._settings, *key, self._transport)
+            item = cache[key]
+            if item is None:
+                continue  # app not connected or not answering: change nothing
+            if item is False:
+                await self.untrack(t.topic_id)
+                done["untracked"] += 1
+                continue
+            want = monitored(item, t.season)  # type: ignore[arg-type]
+            if t.state == "active" and not want:
+                self._save(topic_id=t.topic_id, state="paused")
+                self._activity.event(
+                    "paused", f"Tracking paused (not monitored in "
+                    f"{'Sonarr' if t.content_kind == 'tv' else 'Radarr'}): {t.title}",
+                    topic_id=t.topic_id,
+                )  # fmt: skip
+                done["paused"] += 1
+            elif t.state == "paused" and want:
+                self._save(topic_id=t.topic_id, state="active")
+                self._activity.event(
+                    "resumed", f"Tracking resumed (monitored again): {t.title}",
+                    topic_id=t.topic_id,
+                )  # fmt: skip
+                done["resumed"] += 1
+        return done
+
     # --- updates -------------------------------------------------------------------------------
 
     async def poll_feeds(self) -> int:
@@ -291,7 +334,7 @@ class Tracker:
         changed since their last check. → topics checked."""
         by_forum: dict[int, list[Tracked]] = {}
         for t in self.all(include_gone=False):
-            if t.forum_id:
+            if t.forum_id and t.state == "active":
                 by_forum.setdefault(t.forum_id, []).append(t)
         checked = 0
         async with httpx.AsyncClient(
@@ -330,6 +373,8 @@ class Tracker:
         now = datetime.now(UTC)
         due = []
         for t in self.all(include_gone=False):
+            if t.state != "active":
+                continue  # paused: Sonarr/Radarr don't want it now
             every = timedelta(hours=hours * (1 if ongoing(t.title) else COMPLETE_CHECK_FACTOR))
             if t.last_checked_at is None or now - t.last_checked_at >= every:
                 due.append(t)
@@ -468,6 +513,44 @@ async def remove_from_queue(
     except (httpx.HTTPError, ValueError) as e:
         log.warning("%s queue removal of %s: %s", app, download_id, e)
         return False
+
+
+async def library_item(
+    settings: Any, kind: str, content_id: int, transport: httpx.AsyncBaseTransport | None = None
+) -> dict[str, Any] | bool | None:
+    """The series (tvdb id) in Sonarr / film (tmdb id) in Radarr: its JSON, False when the app
+    doesn't have it, None when that can't be told (not connected, error)."""
+    app, param, path = (
+        ("sonarr", "tvdbId", "series") if kind == "tv" else ("radarr", "tmdbId", "movie")
+    )
+    url = str(settings.get(f"{app}.url") or "").strip().rstrip("/")
+    key = settings.get(f"{app}.api_key")
+    if not url or not key:
+        return None
+    try:
+        async with httpx.AsyncClient(
+            timeout=15, transport=transport, headers={"X-Api-Key": str(key)}
+        ) as c:
+            r = await c.get(f"{url}/api/v3/{path}", params={param: content_id})
+            if r.status_code != 200:
+                return None
+            items = [i for i in r.json() if i.get(param) == content_id]
+            return items[0] if items else False
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("%s lookup of %s: %s", app, content_id, e)
+        return None
+
+
+def monitored(item: dict[str, Any], season: int | None) -> bool:
+    """Monitored: the series/film, and the season when the topic is one season's."""
+    if not item.get("monitored"):
+        return False
+    if season is None:
+        return True
+    for s in item.get("seasons") or []:
+        if s.get("seasonNumber") == season:
+            return bool(s.get("monitored"))
+    return True
 
 
 # --- update detection and applying updates (M5b) ----------------------------------------------

@@ -59,6 +59,10 @@ class DownloadRow(Base):
     content_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)
     content_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     season: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # A single-episode release: the episode (topic's numbering) and, once added, its video file
+    # in the torrent (untagged path, stable across in-place updates).
+    episode: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    file: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

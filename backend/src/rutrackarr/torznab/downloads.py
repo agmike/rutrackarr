@@ -28,6 +28,8 @@ class Download:
     content_kind: str | None = None  # tv | movie: what Sonarr/Radarr grabbed it as
     content_id: int | None = None  # TVDB id / TMDb id
     season: int | None = None
+    episode: int | None = None  # a single-episode release (topic's numbering)
+    file: str | None = None  # …its video file in the torrent (untagged path)
 
 
 class DownloadStore:
@@ -42,6 +44,7 @@ class DownloadStore:
         forum: str,
         release: str | None = None,
         content: tuple[str, int, int | None] | None = None,
+        episode: int | None = None,
     ) -> None:
         """`info` is the torrent as served (marked: its hash is the one Sonarr/Radarr track);
         `content`: (tv|movie, TVDB/TMDb id, season) of the search result it was grabbed from."""
@@ -52,6 +55,7 @@ class DownloadStore:
             row.release = release
             if content is not None:
                 row.content_kind, row.content_id, row.season = content
+            row.episode = episode
             row.created_at = datetime.now(UTC)
             s.merge(row)
 
@@ -79,6 +83,13 @@ class DownloadStore:
         with self._sessions() as s:
             q = select(DownloadRow).order_by(DownloadRow.created_at.desc()).limit(limit)
             return [_download(r) for r in s.scalars(q)]
+
+    def set_file(self, info_hash: str, file: str | None) -> None:
+        """The video file a single-episode release is (None: not found — the whole topic)."""
+        with self._sessions.begin() as s:
+            row = s.get(DownloadRow, info_hash.strip().upper())
+            if row is not None:
+                row.file = file
 
     def repoint(self, old_real: str, new_real: str) -> None:
         """A topic's torrent was replaced by its updated version."""
@@ -115,6 +126,7 @@ def _download(row: DownloadRow) -> Download:
         added=row.added_at is not None,
         created_at=_utc(row.created_at), added_at=_utc(row.added_at),
         content_kind=row.content_kind, content_id=row.content_id, season=row.season,
+        episode=row.episode, file=row.file,
     )  # fmt: skip
 
 

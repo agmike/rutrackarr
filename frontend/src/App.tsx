@@ -1,5 +1,5 @@
-import { Activity, BookmarkCheck, ListTree, Search, Settings, SlidersHorizontal } from "lucide-react"
-import { useEffect } from "react"
+import { Activity, BookmarkCheck, ListTree, PanelLeftClose, PanelLeftOpen, Search, Settings, SlidersHorizontal } from "lucide-react"
+import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
 import { useQuery } from "@tanstack/react-query"
 import { Toaster } from "sonner"
@@ -17,7 +17,33 @@ const nav = [
   { to: "/settings", label: "Settings", icon: Settings, end: false },
 ]
 
+const COLLAPSED_KEY = "rutrackarr.sidebar.collapsed"
+
+/** Sidebar collapsed to an icon rail: the viewer's choice, else collapsed on narrow screens. */
+function useCollapsed(): [boolean, () => void] {
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem(COLLAPSED_KEY)
+      if (saved !== null) return saved === "1"
+    } catch {
+      /* storage unavailable */
+    }
+    return window.matchMedia("(max-width: 767px)").matches
+  })
+  const toggle = () =>
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(COLLAPSED_KEY, c ? "0" : "1")
+      } catch {
+        /* storage unavailable */
+      }
+      return !c
+    })
+  return [collapsed, toggle]
+}
+
 export default function App() {
+  const [collapsed, toggle] = useCollapsed()
   const { pathname, hash } = useLocation()
   const system = useQuery({ queryKey: ["system-status"], queryFn: () => api.get<SystemStatus>("system/status"), staleTime: 300_000 }).data
   const title = nav.find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))?.label ?? ""
@@ -27,8 +53,24 @@ export default function App() {
   }, [hash])
   return (
     <div className="flex min-h-svh bg-background text-foreground">
-      <aside className="sticky top-0 flex h-svh w-56 shrink-0 flex-col border-r bg-sidebar p-3">
-        <div className="px-2 py-3 text-lg font-semibold tracking-tight">RuTrackarr</div>
+      <aside
+        className={cn(
+          "sticky top-0 flex h-svh shrink-0 flex-col border-r bg-sidebar transition-[width] duration-150",
+          collapsed ? "w-14 p-2" : "w-56 p-3",
+        )}
+      >
+        <div className={cn("flex items-center py-3", collapsed ? "justify-center" : "justify-between px-2")}>
+          {!collapsed && <span className="text-lg font-semibold tracking-tight">RuTrackarr</span>}
+          <button
+            type="button"
+            onClick={toggle}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            className="inline-flex rounded-md p-1 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            {collapsed ? <PanelLeftOpen className="size-4" /> : <PanelLeftClose className="size-4" />}
+          </button>
+        </div>
         <Separator className="mb-2" />
         <nav className="flex flex-col gap-1">
           {nav.map(({ to, label, icon: Icon, end }) => (
@@ -36,19 +78,21 @@ export default function App() {
               key={to}
               to={to}
               end={end}
+              title={collapsed ? label : undefined}
               className={({ isActive }) =>
                 cn(
-                  "flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-accent",
+                  "flex items-center gap-2 rounded-md py-1.5 text-sm transition-colors hover:bg-accent",
+                  collapsed ? "justify-center px-0" : "px-2",
                   isActive && "bg-accent font-medium",
                 )
               }
             >
-              <Icon className="size-4" />
-              {label}
+              <Icon className="size-4 shrink-0" />
+              {!collapsed && label}
             </NavLink>
           ))}
         </nav>
-        <div className="mt-auto px-2 pt-3 text-xs text-muted-foreground">
+        <div className={cn("mt-auto px-2 pt-3 text-xs text-muted-foreground", collapsed && "hidden")}>
           {system && (
             <>
               v{system.version}
@@ -61,7 +105,7 @@ export default function App() {
           </a>
         </div>
       </aside>
-      <main className="flex-1 p-6">
+      <main className="min-w-0 flex-1 p-4 md:p-6">
         <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1>
         <AlertBanner />
         <Outlet />

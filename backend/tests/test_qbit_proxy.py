@@ -30,12 +30,14 @@ class FakeQbit:
         self.added: list[dict] = []
         self.calls: list[str] = []
         self.modern_login = True  # qBittorrent 5.2+: 204 on success
+        self.progress: dict[tuple[str, int], float] = {}  # (hash, file index) → progress
+        self.priority: dict[tuple[str, int], int] = {}
 
     def install(self, net) -> None:  # noqa: F811
         for path in (
             "auth/login", "app/webapiVersion", "torrents/info", "torrents/add", "torrents/files",
             "torrents/renameFile", "torrents/start", "torrents/delete", "torrents/properties",
-            "torrents/setCategory", "torrents/topPrio",
+            "torrents/setCategory", "torrents/topPrio", "torrents/filePrio",
         ):  # fmt: skip
             for method in ("GET", "POST"):
                 net.on(method, f"/api/v2/{path}", self.handle)
@@ -68,14 +70,26 @@ class FakeQbit:
             if h not in self.files:
                 return httpx.Response(404, text="Not Found")
             return httpx.Response(
-                200, json=[{"index": i, "name": n} for i, n in enumerate(self.files[h])]
-            )
+                200,
+                json=[
+                    {
+                        "index": i, "name": n, "size": 1000 + i,
+                        "progress": self.progress.get((h, i), 0.0),
+                        "priority": self.priority.get((h, i), 1),
+                    }
+                    for i, n in enumerate(self.files[h])
+                ],
+            )  # fmt: skip
         if path == "torrents/properties":
             if h not in self.torrents:
                 return httpx.Response(404, text="Not Found")
             return httpx.Response(
                 200, json={"hash": h, "save_path": "/data/torrents/sonarr", "seeding_time": 5}
             )
+        if path == "torrents/filePrio":
+            for i in p["id"].split("|"):
+                self.priority[(h, int(i))] = int(p["priority"])
+            return httpx.Response(200)
         if path == "torrents/renameFile":
             files = self.files[h]
             files[files.index(p["oldPath"])] = p["newPath"]
@@ -404,3 +418,60 @@ def test_radarr_does_not_take_soft_subs_for_hardcoded():
     new = "X 2005 1080p BluRay OrigAudio OrigSoftSubs RusVoice RusSoftSubs EngSoftSubs RTA-T1"
     assert not hc.search(new)
     assert hc.search("X 2005 OrigAudio RusSubs RTA-T1 -RuTracker")  # old tokens: taken for hardsubs
+
+
+EP2 = "Kyouran Reijou Nia Liston S01E02 1080p WEB-DL JAPANESE OrigAudio OrigSoftSubs RTA-T1"
+
+
+def serve_episode(api, net, ep: int, name: str = EP2) -> tuple[bytes, bytes]:  # noqa: F811
+    data, _ = make_torrent(TOPIC, NIA_FILES)
+    net.on("GET", "/forum/dl.php", httpx.Response(200, content=data))
+    r = api.get(
+        "/torznab/download/6830000",
+        params={"apikey": key(api), "name": name, "ep": str(ep), "tvdbid": "1", "season": "1"},
+    )
+    return data, r.content
+
+
+def test_single_episode_release_is_just_its_file(api, net, qbit):  # noqa: F811
+    data, marked = serve_episode(api, net, 2)
+    login(api)
+    assert add(api, marked).text == "Ok."
+    real = torrent.read(data).info_hash.lower()
+    ep2 = next(i for i, f in enumerate(qbit.files[real]) if "S01E02" in f and f.endswith(".mkv"))
+    (item,) = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
+    assert item["name"] == EP2
+    assert item["content_path"] == f"/data/torrents/sonarr/{qbit.files[real][ep2]}"
+    assert (item["size"], item["progress"]) == (1000 + ep2, 0.0)
+    # The episode is done while the rest of the topic isn't: Sonarr can import it now.
+    qbit.progress[(real, ep2)] = 1.0
+    (item,) = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
+    assert (item["progress"], item["state"]) == (1.0, "stalledUP")
+    files = api.get("/qbit/api/v2/torrents/files", params={"hash": item["hash"]}).json()
+    assert [f["index"] for f in files] == [ep2]
+
+
+def test_only_grabbed_episode_downloads(api, net, qbit):  # noqa: F811
+    api.put("/api/settings", json={"values": {"download.only_grabbed": "on"}})
+    data, marked = serve_episode(api, net, 2)
+    login(api)
+    add(api, marked)
+    real = torrent.read(data).info_hash.lower()
+    wanted = {f for i, f in enumerate(qbit.files[real]) if qbit.priority.get((real, i), 1)}
+    assert all("S01E02" in f for f in wanted) and len(wanted) >= 2  # the episode and its tracks
+    assert any(f.endswith(".mka") for f in wanted)
+    # A later grab of episode 1 switches its files on.
+    _, marked1 = serve_episode(api, net, 1, EP2.replace("E02", "E01"))
+    add(api, marked1)
+    wanted = {f for i, f in enumerate(qbit.files[real]) if qbit.priority.get((real, i), 1)}
+    assert any("S01E01" in f for f in wanted)
+
+
+def test_episode_not_found_falls_back_to_the_topic(api, net, qbit):  # noqa: F811
+    _, marked = serve_episode(api, net, 9, EP2.replace("E02", "E09"))
+    login(api)
+    add(api, marked)
+    (item,) = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
+    assert item["content_path"] == f"/data/torrents/sonarr/{TOPIC}"  # the whole topic
+    kinds = [e["kind"] for e in api.get("/api/status/events").json()["items"]]
+    assert "episode_unknown" in kinds

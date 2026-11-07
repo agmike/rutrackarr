@@ -368,7 +368,7 @@ export type TrackedTopic = {
   title: string
   forum: string
   source: "manual" | "grab"
-  state: "active" | "gone"
+  state: "active" | "paused" | "gone"
   content_kind: "tv" | "movie" | null
   content_id: number | null
   season: number | null

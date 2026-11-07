@@ -219,7 +219,11 @@ def test_anime_absolute_searches_share_one_rutracker_query(api, net):  # noqa: F
     miss = items(
         api.get("/torznab/api", params={"t": "search", "q": "One Piece 1100", "apikey": k})
     )
-    assert [i.findtext("title").split(" 1080p")[0] for i in hit] == ["One Piece - 1156-1180"]
+    # The pack, and the episode asked for on its own (Sonarr can grab just that one).
+    assert [i.findtext("title").split(" 1080p")[0] for i in hit] == [
+        "One Piece - 1156-1180",
+        "One Piece - 1160",
+    ]
     assert miss == []
     searches = [c for c in net.calls if c.url.path == "/forum/tracker.php"]
     assert [c.url.params["nm"] for c in searches] == ["One%Piece"]

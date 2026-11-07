@@ -113,6 +113,9 @@ async def check_services(app: FastAPI) -> None:
         alerts.clear("searches", "searches succeed again")
 
 
+LIBRARY_SYNC_HOURS = 6
+
+
 async def track_updates(app: FastAPI, state: dict[str, float], now: float) -> None:
     """Tracked topics: the section feeds every `tracking.feed_minutes`, and a couple of slow
     per-topic checks per round (each one RuTracker request)."""
@@ -125,5 +128,8 @@ async def track_updates(app: FastAPI, state: dict[str, float], now: float) -> No
             await tracker.poll_feeds()
         for t in tracker.due(limit=2):
             await tracker.check(t.topic_id)
+        if due(state, "library", now, LIBRARY_SYNC_HOURS * 3600):
+            state["library"] = now
+            await tracker.sync_library()
     except Exception as e:
         log.warning("tracked topic checks: %s", e)

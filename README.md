@@ -80,6 +80,14 @@ Each grab is its own download in Sonarr (several grabs of one topic share one to
 finished downloads are reported as still seeding, so files are hardlinked or copied, never
 moved away from a torrent that keeps seeding. With a post-import category set, the topic's
 torrent moves there once all its releases have (and back when a new release of it is grabbed).
+
+RuTracker series topics are usually whole seasons, growing as episodes come out. For a single-
+episode search RuTrackarr also offers the episode on its own (`Show S01E05 …`), when it can tell
+which file of the topic it is (from the file names, or their order); Sonarr then sees a download
+of just that file. With *Download only the grabbed episode* on (Settings → Download client),
+qBittorrent downloads only that file (plus its external audio, subtitles and fonts) — the rest of
+the topic downloads when other episodes are grabbed.
+
 Use categories that don't contain each other: in qBittorrent 5.2 a category also lists its
 subcategories, so e.g. `sonarr/default`, `sonarr/rutracker`, `sonarr/completed` — not `sonarr`
 and `sonarr/rutracker`.
@@ -109,7 +117,13 @@ The token format is described in `docs/title-format.md`.
 - **Tracked:** RuTracker topics RuTrackarr follows — tracked by hand (from Search or a topic URL:
   downloaded right away into their own qBittorrent category, e.g. `rutrackarr/tracked`, that no
   Sonarr/Radarr client asks for) or because Sonarr/Radarr grabbed them. Tracked topics take part
-  in every Sonarr/Radarr search; a grab of one reuses the torrent that's already there. Remove
+  in every Sonarr/Radarr search; a grab of one reuses the torrent that's already there. A tracked
+  topic that has the episode asked for answers the search without RuTracker being asked, and after
+  an update its newest episodes show up in Sonarr's RSS on their own, so Sonarr grabs new episodes
+  of an airing series without searching. Grabbed topics follow the series/film: paused (no update
+  checks) while it isn't monitored in Sonarr/Radarr, untracked when it's deleted there; topics
+  tracked by hand are left alone. A topic that RuTracker merges into another one (a new season pack
+  replacing the episodes) needs nothing special: the new topic is found and grabbed episode by episode. Remove
   deletes the torrent (imported episodes stay: hardlinks) and takes unfinished releases out of
   Sonarr's/Radarr's queue. Updates are found through RuTracker's per-section feeds (plus a slow
   per-topic check) and applied in place: the new torrent takes the old one's folder, category

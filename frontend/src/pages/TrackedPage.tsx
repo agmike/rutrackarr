@@ -56,8 +56,9 @@ export function TrackedPage() {
         <CardHeader>
           <CardTitle>Tracked topics</CardTitle>
           <CardDescription>
-            {items.filter((t) => t.state === "active").length} tracked · by hand ones are RuTrackarr's (their torrent stays in
-            the tracking category); grabbed ones are Sonarr's/Radarr's, followed for updates
+            {items.filter((t) => t.state !== "gone").length} tracked · by hand ones are RuTrackarr's (their torrent stays in
+            the tracking category); grabbed ones are Sonarr's/Radarr's, followed for updates while the series/film is monitored
+            there (paused otherwise, untracked when it's deleted)
           </CardDescription>
         </CardHeader>
         <CardContent className="text-sm">
@@ -115,6 +116,11 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
         <Badge variant={t.state === "gone" ? "destructive" : t.source === "manual" ? "default" : "outline"}>
           {t.state === "gone" ? "gone" : t.source === "manual" ? "by hand" : "grabbed"}
         </Badge>
+        {t.state === "paused" && (
+          <Badge variant="secondary" title="Not monitored in Sonarr/Radarr: no update checks until it is again">
+            paused
+          </Badge>
+        )}
         {t.content_id != null && (
           <Badge variant="secondary" title={`${t.content_kind === "tv" ? "TVDB" : "TMDb"} ${t.content_id}${t.season != null ? `, season ${t.season}` : ""}`}>
             {t.content_kind === "movie" ? "Radarr" : "Sonarr"}

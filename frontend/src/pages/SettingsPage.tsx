@@ -105,6 +105,16 @@ const qbittorrent: FieldSpec[] = [
     help: "Create a client proxy for RuTrackarr in qui; its URL ends in /proxy/<token>. Kept like a password.",
     showIf: isQui,
   },
+  {
+    key: "download.only_grabbed",
+    label: "Download only the grabbed episode",
+    type: "select",
+    options: [
+      { value: "off", label: "Off — the whole topic downloads" },
+      { value: "on", label: "On — only the episode Sonarr grabbed (and its audio, subtitles, fonts)" },
+    ],
+    help: "For single-episode grabs from a season topic. Other episodes download when they're grabbed too.",
+  },
 ]
 
 const tracking: FieldSpec[] = [

@@ -14,7 +14,7 @@ from pathlib import Path
 from rutrackarr.releases.language import LanguageVerdict, assess
 from rutrackarr.releases.naming import categories, is_absolute, is_movie, release_name
 from rutrackarr.releases.sections import Catalogue, Section
-from rutrackarr.releases.title import ParsedTitle, parse_title
+from rutrackarr.releases.title import Episodes, ParsedTitle, parse_title
 from rutrackarr.rutracker.client import RuTrackerClient
 from rutrackarr.rutracker.parse import Forum, SearchRow
 from rutrackarr.torznab.idsearch import Match, Resolver, SeriesContext, match, with_override
@@ -49,6 +49,12 @@ class Release:
     tvdbid: int | None = None
     tmdbid: int | None = None
     imdbid: str | None = None
+    # How the name was made (to name single episodes of the same topic the same way).
+    query: str | None = None
+    series_title: str | None = None
+    offset: int = 0
+    original_language: str | None = None
+    episode: int | None = None  # a single episode of a pack: its number in the topic's numbering
 
 
 @dataclass
@@ -272,7 +278,8 @@ def _build(
     title, section, language = _analyse(row.title, section_of(row, catalogue))
     if ctx is None:
         name = release_name(title, section, language, query)
-        return Release(row, title, section, language, name, categories(section, title)), None
+        rel = Release(row, title, section, language, name, categories(section, title), query=query)
+        return rel, None
     ov = ctx.override
     if ov is not None and (why := ov.allows(row.title)):
         return None, why
@@ -310,6 +317,8 @@ def _build(
     return Release(
         row, title, section, language, name, categories(section, title),
         season, ctx.tvdb_id, ctx.tmdb_id if movie else None, ctx.imdb_id if movie else None,
+        query=query, series_title=ctx.title, offset=m.offset,
+        original_language=ctx.original_language,
     ), None  # fmt: skip
 
 
@@ -320,13 +329,16 @@ async def run(
     overrides: "Callable[[str, int | None], object] | None" = None,
     trace: Trace | None = None,
     fresh: bool = False,
-    tracked: "Callable[[], list[SearchRow]] | None" = None,
+    tracked: "Callable[[], list] | None" = None,
 ) -> list[Release]:
     """`overrides(kind, id)` → the series/film override (or None); `trace` collects how the
-    search went; `fresh` bypasses the RuTracker result cache; `tracked()` → tracked topics,
-    which take part in every search like RuTracker's results."""
+    search went; `fresh` bypasses the RuTracker result cache; `tracked()` → tracked topics
+    (tracking.tracker.Tracked), which take part in every search like RuTracker's results, answer
+    an episode search on their own when they have the episode, and offer their newest episodes
+    in RSS after an update."""
     trace = trace if trace is not None else Trace()
-    extra = tracked() if tracked else []
+    refs = tracked() if tracked else []
+    extra = [t.row() for t in refs]
     trace.tracked = {r.topic_id for r in extra}
     ctx = None
     if resolver is not None and req.kind != "movie" and req.tvdbid:
@@ -362,6 +374,8 @@ async def run(
         return out
 
     releases = await search(q)
+    if not q and req.kind != "movie" and resolver is not None:
+        releases += await _updated_episodes(refs, resolver, cache)
     words = q.split()
     if q and not any(r.section.video for r in releases) and len(words) > 2:
         # RuTracker's search is literal about words ("Journeys" vs "Journey's"): retry wider.
@@ -382,7 +396,37 @@ def _keep(req: Request, releases: list[Release], year: int | None, trace: Trace)
         trace.seen(rel.row, rel, why)
         if why is None:
             out.append(rel)
+            if (single := episode_of(rel, req)) is not None:
+                out.append(single)
     return out
+
+
+def single_episode(rel: Release, n: int) -> Release:
+    """Episode `n` (the topic's numbering) of a pack, as a release of its own: named like the
+    pack, with that episode's number."""
+    e = rel.title.episodes
+    title = replace(rel.title, episodes=Episodes(n, n, e.total if e else None))
+    name = release_name(
+        title, rel.section, rel.language, rel.query,
+        series_title=rel.series_title, season=rel.season, offset=rel.offset,
+        original_language=rel.original_language,
+    )  # fmt: skip
+    return replace(rel, title=title, name=name, episode=n)
+
+
+def episode_of(rel: Release, req: Request) -> Release | None:
+    """For a search for one episode: that episode of a pack that has more, as its own release
+    (Sonarr can grab just the episode it misses — of a growing topic, say)."""
+    e = rel.title.episodes
+    if e is None or e.first is None or e.last is None or e.first == e.last:
+        return None
+    if req.absolute is not None and is_absolute(rel.title, rel.section):
+        n = req.absolute
+    elif req.ep is not None and not is_absolute(rel.title, rel.section):
+        n = req.ep - rel.offset
+    else:
+        return None
+    return single_episode(rel, n) if e.first <= n <= e.last else None
 
 
 def _describe(ctx: SeriesContext) -> dict:
@@ -410,6 +454,14 @@ async def _run_ids(
     """One RuTracker search per name of the series (cached), merged by topic, plus the tracked
     topics."""
     trace = trace if trace is not None else Trace()
+    if (req.ep is not None or req.absolute is not None) and (
+        having := _tracked_with_episode(req, ctx, extra or [], cache.catalogue)
+    ):
+        # A tracked topic of this series has the episode: no need to ask RuTracker.
+        trace.searches.append(
+            {"query": "(tracked topic has it)", "results": len(having), "cached": True}
+        )
+        return _keep(req, having, None, trace)
     rows: dict[int, SearchRow] = {}
     for q in ctx.queries:
         found, cached = await cache.search_ex(q, fresh)
@@ -426,3 +478,46 @@ async def _run_ids(
         else:
             releases.append(rel)
     return _keep(req, releases, None, trace)
+
+
+def _tracked_with_episode(
+    req: Request, ctx: SeriesContext, rows: list[SearchRow], catalogue: Catalogue | None
+) -> list[Release]:
+    """Tracked topics of this series that have the episode asked for."""
+    out = []
+    for row in rows:
+        rel, _ = _build(row, None, ctx, catalogue)
+        if rel is None or _reject(req, rel, None) is not None:
+            continue
+        e = rel.title.episodes
+        if episode_of(rel, req) is not None or (e is not None and e.first == e.last):
+            out.append(rel)
+    return out
+
+
+RSS_UPDATED_DAYS = 3
+RSS_EPISODES = 3
+
+
+async def _updated_episodes(refs: list, resolver: Resolver, cache: SearchCache) -> list[Release]:
+    """For RSS: tracked series topics updated in the last few days, as their newest episodes on
+    their own (Sonarr grabs the one it misses; a whole growing pack it would reject)."""
+    from datetime import UTC, datetime, timedelta
+
+    since = datetime.now(UTC) - timedelta(days=RSS_UPDATED_DAYS)
+    out: list[Release] = []
+    for t in refs:
+        if t.content_kind != "tv" or not t.content_id or not t.last_changed_at:
+            continue
+        if t.last_changed_at < since:
+            continue
+        ctx = await resolver.tv(t.content_id, t.season)
+        rel = _build(t.row(), None, ctx, cache.catalogue)[0] if ctx else None
+        e = rel.title.episodes if rel else None
+        if rel is None or e is None or e.first is None or e.last is None:
+            continue
+        out += [
+            single_episode(rel, n)
+            for n in range(max(e.first, e.last - RSS_EPISODES + 1), e.last + 1)
+        ]
+    return out

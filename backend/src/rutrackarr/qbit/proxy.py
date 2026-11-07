@@ -22,6 +22,7 @@ import hashlib
 import hmac
 import json
 import logging
+from pathlib import PurePosixPath
 from typing import Any
 
 from fastapi import APIRouter, Request, Response
@@ -30,7 +31,10 @@ from starlette.datastructures import UploadFile
 from rutrackarr.activity import Activity
 from rutrackarr.qbit import topics
 from rutrackarr.qbit.upstream import Qbit, QbitError
-from rutrackarr.releases.naming import file_tag
+from rutrackarr.releases.companions import FONTS, plan
+from rutrackarr.releases.episodes import episode_file
+from rutrackarr.releases.naming import file_tag, untagged
+from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
 from rutrackarr.torznab.downloads import Download, DownloadStore
 
@@ -70,8 +74,9 @@ async def api(path: str, request: Request) -> Response:
         return _text("RuTrackarr: qBittorrent is not configured", 502)
     await request.body()  # cached: forwarded as is, and parsed as a form where needed
     proxy = _Proxy(
-        qbit, request.app.state.downloads, request.app.state.activity, request.app.state.tracker
-    )
+        qbit, request.app.state.downloads, request.app.state.activity, request.app.state.tracker,
+        request.app.state.settings_service.get,
+    )  # fmt: skip
     try:
         if path == "torrents/add" and request.method == "POST":
             return await proxy.add(request)
@@ -111,8 +116,11 @@ async def _params(request: Request) -> dict[str, str]:
 
 
 class _Proxy:
-    def __init__(self, qbit: Qbit, store: DownloadStore, activity: Activity, tracker: Any) -> None:
+    def __init__(
+        self, qbit: Qbit, store: DownloadStore, activity: Activity, tracker: Any, settings: Any
+    ) -> None:
         self.qbit, self.store, self.activity, self.tracker = qbit, store, activity, tracker
+        self.settings = settings
         self._active: list[Download] | None = None
 
     def active(self) -> list[Download]:
@@ -195,6 +203,7 @@ class _Proxy:
         self.store.added(virtual_info, release, rhash, category)
         if (grabbed := self.store.get(virtual_info.info_hash)) is not None:
             self.tracker.on_grab(grabbed, rhash)
+            await self._files_for(grabbed, rhash, fresh=not present)
         how = "files tagged, started" if not want_stopped else "files tagged, stopped"
         self.activity.event(
             "added",
@@ -203,6 +212,44 @@ class _Proxy:
         )
         log.info("qbit add: %s → %s (%s)", release, rhash, "new" if not present else "present")
         return True
+
+    async def _files_for(self, d: Download, rhash: str, fresh: bool) -> None:
+        """A single-episode release: find its video file in the topic. With "download only the
+        grabbed episodes" on, a topic added for it gets only that episode (and its tracks);
+        later grabs from the topic switch theirs on."""
+        files = await topics.files(self.qbit, rhash)
+        names = [untagged(str(f.get("name", ""))) for f in files]
+        only = str(self.settings("download.only_grabbed") or "off") == "on"
+        if d.episode is None:
+            if only and any(f.get("priority") == 0 for f in files):
+                await _want(self.qbit, rhash, [int(f["index"]) for f in files])  # whole topic
+            return
+        e = parse_title(d.title).episodes if d.title else None
+        video = episode_file(names, d.episode, e.first if e else None, e.last if e else None)
+        self.store.set_file(d.info_hash, video)
+        if video is None:
+            self.activity.event(
+                "episode_unknown",
+                f"Couldn't tell which file of the topic is episode {d.episode}: "
+                f"{d.release} downloads as the whole topic",
+                level="warn", topic_id=d.topic_id or None,
+            )  # fmt: skip
+            return
+        if not only:
+            return
+        wanted = (
+            {video}
+            | {c.path for c in plan(names, video)}
+            | {n for n in names if PurePosixPath(n).suffix.lower() in FONTS}
+        )
+        indices = [int(f["index"]) for f, n in zip(files, names, strict=True) if n in wanted]
+        if fresh:
+            others = [int(f["index"]) for f, n in zip(files, names, strict=True) if n not in wanted]
+            if others:
+                await self.qbit.post(
+                    "torrents/filePrio", hash=rhash, id="|".join(map(str, others)), priority="0"
+                )
+        await _want(self.qbit, rhash, indices)
 
     async def _move(self, rhash: str, category: str) -> None:
         await topics.move(self.qbit, rhash, category)
@@ -234,12 +281,20 @@ class _Proxy:
                 str(t.get("hash", "")).upper(): t
                 for t in await self.qbit.json("torrents/info", hashes=hashes)
             }
+            files = await self._files_of({d.real_hash for d in wanted if d.file and d.real_hash})
             for d in wanted:
                 if (real := reals.get(d.real_hash or "")) is not None:
-                    out.append(_virtual(real, d))
+                    out.append(_virtual(real, d, _file(files, d)))
                 else:
                     forget_gone(self.store, self.activity, d, self.tracker)
         return Response(_json(out), media_type="application/json")
+
+    async def _files_of(self, reals: set[str | None]) -> dict[str, list[dict[str, Any]]]:
+        out = {}
+        for real in sorted(r for r in reals if r):
+            r = await self.qbit.request("GET", "torrents/files", params={"hash": real.lower()})
+            out[real] = r.json() if r.status_code == 200 else []
+        return out
 
     # --- commands on virtual hashes ----------------------------------------------------------
 
@@ -322,6 +377,11 @@ class _Proxy:
             r = await self.qbit.request("POST", path, data=out)
         content = r.content
         asked = params.get("hash", "")
+        single = virtual.get(asked.upper())
+        if path == "torrents/files" and r.status_code == 200 and single and single.file:
+            content = _json(
+                [f for f in r.json() if untagged(str(f.get("name", ""))) == single.file]
+            )
         if path == "torrents/properties" and r.status_code == 200 and asked:
             props = r.json()
             if isinstance(props, dict) and "hash" in props:
@@ -332,8 +392,29 @@ class _Proxy:
         )
 
 
-def _virtual(real: dict[str, Any], d: Download) -> dict[str, Any]:
+def _file(files: dict[str, list[dict[str, Any]]], d: Download) -> dict[str, Any] | None:
+    """A single-episode release's video file in its topic's file list (live: name, size,
+    progress)."""
+    if not d.file or not d.real_hash:
+        return None
+    return next(
+        (f for f in files.get(d.real_hash, []) if untagged(str(f.get("name", ""))) == d.file), None
+    )
+
+
+def _virtual(
+    real: dict[str, Any], d: Download, file: dict[str, Any] | None = None
+) -> dict[str, Any]:
     t = dict(real)
+    if file is not None:
+        # Just the episode: its file is the content, its progress the download's.
+        size, progress = int(file.get("size") or 0), float(file.get("progress") or 0)
+        t["content_path"] = f"{str(real.get('save_path', '')).rstrip('/')}/{file.get('name', '')}"
+        t["size"], t["total_size"], t["progress"] = size, size, progress
+        t["amount_left"] = round(size * (1 - progress))
+        t["completed"] = size - t["amount_left"]
+        if progress >= 1:
+            t["state"], t["eta"] = "stalledUP", 0
     t["hash"] = d.info_hash.lower()
     if "infohash_v1" in t:
         t["infohash_v1"] = d.info_hash.lower()
@@ -359,3 +440,10 @@ def forget_gone(store: DownloadStore, activity: Activity, d: Download, tracker: 
         level="warn",
         topic_id=d.topic_id or None,
     )
+
+
+async def _want(qbit: Qbit, rhash: str, indices: list[int]) -> None:
+    if indices:
+        await qbit.post(
+            "torrents/filePrio", hash=rhash, id="|".join(map(str, indices)), priority="1"
+        )

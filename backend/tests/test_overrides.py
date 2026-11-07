@@ -110,3 +110,8 @@ def test_query_log_keeps_per_topic_results(api, net):  # noqa: F811
         api.get("/api/status/queries", params={"empty": "true"}).json()["items"][0]["query"]
         == "tvdb:176941 S9"
     )
+
+
+def test_episode_search_offers_the_episode_of_a_pack(api, net):  # noqa: F811
+    sherlock(api, net)
+    assert titles(api, season="1", ep="2") == ["Sherlock S01", "Sherlock S01E02"]

@@ -255,3 +255,80 @@ def test_status_shows_tracked_topics(api, net, qbit):  # noqa: F811
     add(api, torrent.mark(data, RELEASE))
     items = api.get("/api/status/downloads").json()["items"]
     assert [i.get("tracked", False) for i in items] == [False]
+
+
+SHERLOCK_S1 = "Шерлок / Sherlock / Сезон: 1 / Серии: 1-3 из 3 (Пол МакГиган) [2010, Великобритания, WEB-DL 1080p] MVO (Первый канал) + Original"
+
+
+def _sherlock_tracked(api, **fields):  # noqa: F811
+    from datetime import UTC, datetime
+
+    api.app.state.tracker._save(
+        topic_id=1, title=SHERLOCK_S1, forum="Зарубежные сериалы (HD Video)", forum_id=193,
+        size=1, seeders=5, info_hash="A" * 40, source="grab", state="active",
+        content_kind="tv", content_id=176941, season=1, last_changed_at=datetime.now(UTC),
+    )  # fmt: skip
+    if fields:
+        api.app.state.tracker._save(topic_id=1, **fields)
+
+
+def test_tracked_topic_answers_an_episode_search_itself(api, net):  # noqa: F811
+    from tests.test_overrides import sherlock, titles
+
+    seen = sherlock(api, net)
+    _sherlock_tracked(api)
+    assert titles(api, season="1", ep="2") == ["Sherlock S01", "Sherlock S01E02"]
+    assert seen == []  # RuTracker not asked
+    titles(api, season="1", ep="5")  # not in the tracked topic: RuTracker is searched
+    assert seen
+
+
+def test_rss_offers_the_newest_episodes_of_updated_topics(api, net):  # noqa: F811
+    from datetime import UTC, datetime, timedelta
+
+    from tests.test_overrides import sherlock
+
+    sherlock(api, net)
+    _sherlock_tracked(api)
+    r = api.get("/torznab/api", params={"t": "tvsearch", "apikey": key(api)})
+    names = [i.findtext("title").split(" 1080p")[0] for i in ET.fromstring(r.content).iter("item")]
+    assert {"Sherlock S01E01", "Sherlock S01E02", "Sherlock S01E03"} <= set(names)
+    old = datetime.now(UTC) - timedelta(days=10)
+    api.app.state.tracker._save(topic_id=1, last_changed_at=old)
+    r = api.get("/torznab/api", params={"t": "tvsearch", "apikey": key(api)})
+    names = [i.findtext("title") for i in ET.fromstring(r.content).iter("item")]
+    assert not any("S01E0" in n for n in names)
+
+
+def test_grabbed_topics_follow_sonarr(api, net):  # noqa: F811
+    import asyncio
+
+    _sherlock_tracked(api)
+    api.app.state.tracker._save(
+        topic_id=2, title="hand", forum="x", forum_id=193, size=1, seeders=1, info_hash="B" * 40,
+        source="manual", state="active", content_kind="tv", content_id=176941, season=1,
+    )  # fmt: skip
+    api.put(
+        "/api/settings",
+        json={"values": {"sonarr.url": "http://sonarr:8989/sonarr", "sonarr.api_key": "k"}},
+    )
+    series = {"tvdbId": 176941, "monitored": True,
+              "seasons": [{"seasonNumber": 1, "monitored": False}]}  # fmt: skip
+    answer = {"status": 200, "items": [series]}
+    net.on(
+        "GET",
+        "/sonarr/api/v3/series",
+        lambda r: httpx.Response(answer["status"], json=answer["items"]),
+    )
+    sync = api.app.state.tracker.sync_library
+    assert asyncio.run(sync())["paused"] == 1
+    assert tracked(api)[1]["state"] == "paused" and tracked(api)[2]["state"] == "active"
+    assert all(t.topic_id != 1 for t in api.app.state.tracker.due(limit=10))
+    series["seasons"][0]["monitored"] = True
+    assert asyncio.run(sync())["resumed"] == 1 and tracked(api)[1]["state"] == "active"
+    answer["items"] = []
+    assert asyncio.run(sync())["untracked"] == 1
+    assert 1 not in tracked(api) and 2 in tracked(api)  # hand-tracked stays
+    answer["status"] = 500
+    _sherlock_tracked(api)
+    assert asyncio.run(sync()) == {"untracked": 0, "paused": 0, "resumed": 0}  # can't tell

@@ -71,7 +71,7 @@ async def api(request: Request) -> Response:
         releases = await run(
             request.app.state.torznab_cache, req, request.app.state.resolver,
             overrides=request.app.state.overrides.get, trace=trace,
-            tracked=request.app.state.tracker.search_rows,
+            tracked=request.app.state.tracker.searchable,
         )  # fmt: skip
         _link_tracked(request, releases, trace)
     except RuTrackerError as e:
@@ -123,6 +123,8 @@ def _link_params(key: str, rel: Any) -> dict[str, str]:
     """Download link query: the release name, and what it is (so a grab can be tracked as that
     series/film)."""
     params = {"apikey": key, "name": rel.name}
+    if rel.episode is not None:
+        params["ep"] = str(rel.episode)  # one episode of the topic (its numbering)
     if rel.tmdbid and not rel.tvdbid:
         params |= {"tmdbid": str(rel.tmdbid)}
     elif rel.tvdbid:
@@ -163,6 +165,7 @@ async def download(
     tvdbid: int | None = None,
     tmdbid: int | None = None,
     season: int | None = None,
+    ep: int | None = None,
 ) -> Response:
     """The .torrent, fetched from RuTracker when asked for and never stored (it has the passkey).
 
@@ -189,7 +192,7 @@ async def download(
             log.warning("topic %s: could not mark the torrent: %s", topic_id, e)
             release = ""
     content = ("tv", tvdbid, season) if tvdbid else ("movie", tmdbid, None) if tmdbid else None
-    _remember(request, topic_id, data, release or None, content)
+    _remember(request, topic_id, data, release or None, content, ep)
     return Response(
         data,
         media_type="application/x-bittorrent",
@@ -203,6 +206,7 @@ def _remember(
     data: bytes,
     release: str | None = None,
     content: tuple[str, int, int | None] | None = None,
+    episode: int | None = None,
 ) -> None:
     """Keep the info hash and file list (not the torrent) for the import script."""
     try:
@@ -212,7 +216,13 @@ def _remember(
         return
     row = request.app.state.torznab_cache.find(topic_id)
     request.app.state.downloads.remember(
-        info, topic_id, row.title if row else "", row.forum if row else "", release, content
+        info,
+        topic_id,
+        row.title if row else "",
+        row.forum if row else "",
+        release,
+        content,
+        episode,
     )
 
 
