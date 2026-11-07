@@ -220,6 +220,16 @@ export type ServiceView = {
   queries_24h: QueryStats
   queries_7d: QueryStats
 }
+export type Grab = {
+  hash: string
+  release: string
+  topic_id: number
+  topic_url: string | null
+  served_at: string | null
+  via_proxy: boolean
+  category: string | null
+}
+export type GrabsView = { items: Grab[] }
 export type ActivityEvent = { at: string; kind: string; level: "info" | "warn" | "error"; message: string; topic_url: string | null }
 export type EventsView = { items: ActivityEvent[] }
 export type QueryEntry = {

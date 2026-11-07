@@ -10,12 +10,12 @@ const ICON = {
 }
 
 export function ActivityCard() {
-  const q = useQuery({ queryKey: ["status-events"], queryFn: () => api.get<EventsView>("status/events?limit=25"), refetchInterval: 15_000 })
+  const q = useQuery({ queryKey: ["status-events"], queryFn: () => api.get<EventsView>("status/events?limit=25&exclude=grab"), refetchInterval: 15_000 })
   return (
     <Card className="md:col-span-2">
       <CardHeader>
         <CardTitle>Activity</CardTitle>
-        <CardDescription>Grabs, torrents added, moved and removed, RuTracker outages</CardDescription>
+        <CardDescription>Torrents added, moved and removed; RuTracker outages</CardDescription>
       </CardHeader>
       <CardContent className="text-sm">
         {q.isPending && <p className="text-muted-foreground">loading…</p>}

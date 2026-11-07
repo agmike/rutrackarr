@@ -98,9 +98,12 @@ class Activity:
 
     # --- reading -------------------------------------------------------------------------------
 
-    def events(self, limit: int = 20) -> list[Event]:
+    def events(self, limit: int = 20, exclude: tuple[str, ...] = ()) -> list[Event]:
         with self._sessions() as s:
-            rows = s.scalars(select(EventRow).order_by(EventRow.id.desc()).limit(limit))
+            q = select(EventRow).order_by(EventRow.id.desc()).limit(limit)
+            if exclude:
+                q = q.where(EventRow.kind.not_in(exclude))
+            rows = s.scalars(q)
             return [Event(_utc(r.at), r.kind, r.level, r.message, r.topic_id) for r in rows]
 
     def queries(self, limit: int = 20, errors_only: bool = False) -> list[Query]:

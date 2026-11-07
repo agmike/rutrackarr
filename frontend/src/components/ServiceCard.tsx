@@ -31,12 +31,12 @@ export function ServiceCard() {
           )}
         </div>
         {s && day && rt && (
-          <div className="grid grid-cols-2 gap-2">
-            <StatTile label="Queries, 24 h" value={day.queries} hint={`${s.queries_7d.queries} in 7 days`} />
-            <StatTile label="From cache" value={cacheRate == null ? "—" : `${cacheRate}%`} hint="Answered without asking RuTracker" />
-            <StatTile label="Avg. answer" value={day.avg_ms == null ? "—" : `${(day.avg_ms / 1000).toFixed(1)} s`} hint={day.max_ms ? `slowest ${(day.max_ms / 1000).toFixed(1)} s` : undefined} />
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <StatTile label="Queries 24h" value={day.queries} hint={`${s.queries_7d.queries} in 7 days`} />
+            <StatTile label="Cached" value={cacheRate == null ? "—" : `${cacheRate}%`} hint="Answered without asking RuTracker (24 h)" />
+            <StatTile label="Avg answer" value={day.avg_ms == null ? "—" : `${(day.avg_ms / 1000).toFixed(1)} s`} hint={day.max_ms ? `slowest ${(day.max_ms / 1000).toFixed(1)} s (24 h)` : undefined} />
             <StatTile
-              label="RuTracker, last minute"
+              label="RuTracker/min"
               value={`${rt.last_minute}/${rt.per_minute}`}
               hint={rt.waiting ? `${rt.waiting} waiting, ~${rt.wait_seconds} s` : "Requests in the last minute / limit"}
             />

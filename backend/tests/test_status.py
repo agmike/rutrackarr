@@ -94,9 +94,14 @@ def test_downloads_and_activity(api, net, qbit):  # noqa: F811
     assert connections(api)["qbittorrent"]["state"] == "error"  # fake has no app/version
     data, marked = serve(api, net)
     assert events(api)[0][0] == "grab" and RELEASE in events(api)[0][1]
+    grabs = api.get("/api/status/grabs").json()["items"]
+    assert grabs[0]["release"] == RELEASE and grabs[0]["via_proxy"] is False
     login(api)
     add(api, marked)
     assert events(api)[0][0] == "added"
+    assert api.get("/api/status/grabs").json()["items"][0]["via_proxy"] is True
+    no_grabs = api.get("/api/status/events", params={"exclude": "grab"}).json()["items"]
+    assert [e["kind"] for e in no_grabs] == ["added"]
     real = torrent.read(data).info_hash.lower()
     qbit.torrents[real] |= {"progress": 0.25, "dlspeed": 1000, "upspeed": 50, "uploaded": 7}
     body = api.get("/api/status/downloads").json()

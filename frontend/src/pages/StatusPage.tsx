@@ -3,6 +3,7 @@ import { ActivityCard } from "@/components/ActivityCard"
 import { ConnectionsCard } from "@/components/ConnectionsCard"
 import { DownloadsCard } from "@/components/DownloadsCard"
 import { QueriesCard } from "@/components/QueriesCard"
+import { RecentGrabsCard } from "@/components/RecentGrabsCard"
 import { ServiceCard } from "@/components/ServiceCard"
 import { SessionCard } from "@/components/SessionCard"
 import { SetupChecklist } from "@/components/SetupChecklist"
@@ -16,6 +17,7 @@ export function StatusPage() {
       <SessionCard />
       {settings.data && <SetupChecklist settings={settings.data} />}
       <DownloadsCard />
+      <RecentGrabsCard />
       <ActivityCard />
       <QueriesCard />
       <ConnectionsCard />

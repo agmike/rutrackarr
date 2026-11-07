@@ -316,7 +316,9 @@ def _status(t: dict[str, Any]) -> str:
 
 
 @router.get("/events")
-def events(request: Request, limit: int = 25) -> dict[str, Any]:
+def events(request: Request, limit: int = 25, exclude: str = "") -> dict[str, Any]:
+    """Newest first; `exclude`: comma-separated kinds left out (e.g. "grab")."""
+    kinds = tuple(k.strip() for k in exclude.split(",") if k.strip())
     client = request.app.state.rutracker
     return {
         "items": [
@@ -327,7 +329,7 @@ def events(request: Request, limit: int = 25) -> dict[str, Any]:
                 "message": e.message,
                 "topic_url": client.topic_url(e.topic_id) if e.topic_id else None,
             }
-            for e in request.app.state.activity.events(max(1, min(limit, 200)))
+            for e in request.app.state.activity.events(max(1, min(limit, 200)), kinds)
         ]
     }
 
@@ -349,3 +351,26 @@ def queries(request: Request, limit: int = 25, errors: bool = False) -> dict[str
             for q in request.app.state.activity.queries(max(1, min(limit, 200)), errors)
         ]
     }
+
+
+# --- recent grabs ----------------------------------------------------------------------------
+
+
+@router.get("/grabs")
+def grabs(request: Request, limit: int = 10) -> dict[str, Any]:
+    """The .torrent files served most recently (what Sonarr/Radarr grabbed)."""
+    client = request.app.state.rutracker
+    out = []
+    for d in request.app.state.downloads.recent(max(1, min(limit, 50))):
+        out.append(
+            {
+                "hash": d.info_hash,
+                "release": d.release or d.title or d.name,
+                "topic_id": d.topic_id,
+                "topic_url": client.topic_url(d.topic_id) if d.topic_id else None,
+                "served_at": d.created_at.isoformat() if d.created_at else None,
+                "via_proxy": d.real_hash is not None,
+                "category": d.category,
+            }
+        )
+    return {"items": out}
