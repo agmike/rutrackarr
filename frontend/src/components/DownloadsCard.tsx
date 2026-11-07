@@ -20,6 +20,7 @@ function Row({ d }: { d: DownloadItem }) {
     <li className="grid gap-1 border-b pb-2 last:border-b-0 last:pb-0">
       <div className="flex min-w-0 items-center gap-2">
         <Badge variant={variant}>{d.status}</Badge>
+        {d.tracked && <Badge variant="outline">tracked</Badge>}
         <span className="min-w-0 flex-1 truncate font-medium" title={d.release}>
           {d.release}
         </span>
@@ -35,7 +36,7 @@ function Row({ d }: { d: DownloadItem }) {
         </div>
       )}
       <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
-        <span>{app(d.category)}</span>
+        <span>{d.tracked ? "RuTrackarr" : app(d.category)}</span>
         <span>{done ? formatBytes(d.size) : `${pct}% of ${formatBytes(d.size)}`}</span>
         {!done && (
           <span className="inline-flex items-center gap-0.5">
@@ -68,7 +69,7 @@ export function DownloadsCard() {
     <Card className="md:col-span-2">
       <CardHeader>
         <CardTitle>Downloads</CardTitle>
-        <CardDescription>Releases grabbed through RuTrackarr's download client, live from qBittorrent</CardDescription>
+        <CardDescription>Releases grabbed through RuTrackarr's download client and topics tracked by hand, live from qBittorrent</CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
         {q.isPending && <p className="text-muted-foreground">loading…</p>}

@@ -160,23 +160,6 @@ def test_id_search_links_a_tracked_topic(api, net):  # noqa: F811
     assert "linked" in [e["kind"] for e in api.get("/api/status/events").json()["items"]]
 
 
-def test_feed_check(api, net):  # noqa: F811
-    atom = '<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>Topic A</title></entry><entry><title>Topic B</title></entry></feed>'
-    net.on(
-        "GET",
-        "/atom/f/1105.atom",
-        httpx.Response(200, text=atom, headers={"content-type": "application/atom+xml"}),
-    )
-    r = api.get("/api/tracked/feed-check").json()
-    (res,) = r["results"]
-    assert (r["forum_id"], res["status"], res["entries"], res["sample"]) == (
-        1105,
-        200,
-        2,
-        ["Topic A", "Topic B"],
-    )
-
-
 def topic_page_with(title: str, info_hash: str) -> httpx.Response:
     page = topic_page(title).text.replace(
         "</body>",
@@ -251,3 +234,24 @@ def test_feeds_trigger_checks(api, net, qbit):  # noqa: F811
     net.routes[("GET", "/forum/viewtopic.php")] = [topic_page_with(TOPIC, real.upper())]
     assert asyncio.run(api.app.state.tracker.poll_feeds()) == 1
     assert tracked(api)[6830000]["last_checked_at"]
+
+
+def test_status_shows_tracked_topics(api, net, qbit):  # noqa: F811
+    import asyncio
+
+    data, _ = track_by_url(api, net)
+    d = api.get("/api/status/downloads").json()
+    (item,) = d["items"]
+    assert item["tracked"] is True and item["category"] == TRACKED and d["totals"]["torrents"] == 1
+    net.on("GET", "/atom/f/1105.atom", httpx.Response(200, text="<feed></feed>"))
+    asyncio.run(api.app.state.tracker.poll_feeds())
+    s = api.get("/api/status/tracking").json()
+    assert (s["manual"], s["grabbed"], s["gone"], s["due"]) == (1, 0, 0, 1)
+    assert s["feeds_at"] and s["feeds"] == [
+        {"forum_id": 1105, "forum": FORUM, "tracked": 1, "status": 200, "entries": 0}
+    ]
+    # Once Sonarr uses it, it's shown as Sonarr's release instead.
+    login(api)
+    add(api, torrent.mark(data, RELEASE))
+    items = api.get("/api/status/downloads").json()["items"]
+    assert [i.get("tracked", False) for i in items] == [False]

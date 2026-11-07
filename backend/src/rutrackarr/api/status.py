@@ -233,11 +233,20 @@ async def downloads(request: Request) -> dict[str, Any]:
     if not qbit.configured():
         return {"configured": False, "items": [], "totals": None}
     store, activity = request.app.state.downloads, request.app.state.activity
+    tracker = request.app.state.tracker
     active = [d for d in store.active() if d.real_hash]
+    used = {d.real_hash for d in active}
+    # Topics tracked by hand that no Sonarr/Radarr release uses (yet): downloads of their own.
+    own = [t for t in tracker.all(include_gone=False) if t.manual and t.info_hash not in used]
     reals: dict[str, dict[str, Any]] = {}
     error = None
-    if active:
-        hashes = "|".join(sorted({d.real_hash.lower() for d in active if d.real_hash}))
+    if active or own:
+        hashes = "|".join(
+            sorted(
+                {d.real_hash.lower() for d in active if d.real_hash}
+                | {t.info_hash.lower() for t in own}
+            )
+        )
         try:
             reals = {
                 str(t.get("hash", "")).upper(): t
@@ -280,6 +289,22 @@ async def downloads(request: Request) -> dict[str, Any]:
                 },
             }
         )
+    fields = (
+        "state", "progress", "size", "dlspeed", "upspeed", "eta", "ratio", "uploaded",
+        "downloaded", "num_seeds", "num_leechs",
+    )  # fmt: skip
+    for t in own:
+        q = reals.get(t.info_hash)
+        if q is None:
+            continue  # gone: noticed by the tracker's checks
+        items.append(
+            {
+                "hash": t.info_hash, "real_hash": t.info_hash, "release": t.title,
+                "category": q.get("category") or "", "topic_id": t.topic_id,
+                "topic_url": client.topic_url(t.topic_id), "added_at": t.created_at.isoformat(),
+                "status": _status(q), "tracked": True, **{k: q.get(k) for k in fields},
+            }
+        )  # fmt: skip
     order = {"downloading": 0, "stalled": 1, "queued": 2, "stopped": 3, "error": 4, "seeding": 5}
     items.sort(key=lambda i: (order.get(i["status"], 6), i["release"]))
     # Totals per topic torrent: several releases can share one.
@@ -395,3 +420,30 @@ def dropped(request: Request, reason: str = "", limit: int = 100) -> dict[str, A
     client = request.app.state.rutracker
     rows = request.app.state.activity.dropped(reason, max(1, min(limit, 500)))
     return {"items": [r | {"topic_url": client.topic_url(r["topic_id"])} for r in rows]}
+
+
+# --- tracked topics --------------------------------------------------------------------------
+
+
+@router.get("/tracking")
+def tracking(request: Request) -> dict[str, Any]:
+    """Tracked topics at a glance: counts, recent updates, the last feed round, checks due."""
+    tracker, activity = request.app.state.tracker, request.app.state.activity
+    items = tracker.all()
+    active = [t for t in items if t.state == "active"]
+    return {
+        "manual": sum(1 for t in active if t.manual),
+        "grabbed": sum(1 for t in active if not t.manual),
+        "gone": sum(1 for t in items if t.state != "active"),
+        "linked": sum(1 for t in active if t.content_id),
+        "updated_7d": activity.count("updated", 24 * 7),
+        "failed_7d": activity.count("update_failed", 24 * 7),
+        "errors": [
+            {"topic_id": t.topic_id, "title": t.title, "error": t.error} for t in active if t.error
+        ],
+        "due": len(tracker.due(limit=1000)),
+        "last_change": max((t.last_changed_at for t in items if t.last_changed_at), default=None),
+        "feeds_at": tracker.feeds_at.isoformat() if tracker.feeds_at else None,
+        "feeds": [{"forum_id": f} | s for f, s in sorted(tracker.feed_status.items())],
+        "auto_track": request.app.state.settings_service.get("tracking.auto_track") == "on",
+    }

@@ -7,6 +7,7 @@ import { RecentGrabsCard } from "@/components/RecentGrabsCard"
 import { ServiceCard } from "@/components/ServiceCard"
 import { SessionCard } from "@/components/SessionCard"
 import { SetupChecklist } from "@/components/SetupChecklist"
+import { TrackingCard } from "@/components/TrackingCard"
 import { api, type SettingsView } from "@/lib/api"
 
 export function StatusPage() {
@@ -17,6 +18,7 @@ export function StatusPage() {
       <SessionCard />
       {settings.data && <SetupChecklist settings={settings.data} />}
       <DownloadsCard />
+      <TrackingCard />
       <RecentGrabsCard />
       <ActivityCard />
       <QueriesCard />

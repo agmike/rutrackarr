@@ -188,6 +188,7 @@ export type DownloadItem = {
   downloaded: number | null
   num_seeds: number | null
   num_leechs: number | null
+  tracked?: boolean // a topic tracked by hand that no Sonarr/Radarr release uses yet
 }
 export type DownloadTotals = {
   releases: number
@@ -387,3 +388,18 @@ export type TrackedTopic = {
   } | null
 }
 export type TrackedView = { error: string | null; items: TrackedTopic[] }
+
+export type TrackingView = {
+  manual: number
+  grabbed: number
+  gone: number
+  linked: number
+  updated_7d: number
+  failed_7d: number
+  errors: { topic_id: number; title: string; error: string }[]
+  due: number
+  last_change: string | null
+  feeds_at: string | null
+  feeds: { forum_id: number; forum: string; tracked: number; status?: number; entries?: number; error?: string }[]
+  auto_track: boolean
+}

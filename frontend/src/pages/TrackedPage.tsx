@@ -61,7 +61,6 @@ export function TrackedPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="text-sm">
-          <FeedCheck />
           {list.data?.error && <p className="mb-2 text-destructive">qBittorrent: {list.data.error}</p>}
           {list.data && items.length === 0 && <p className="text-muted-foreground">Nothing tracked yet.</p>}
           <ul className="grid gap-3">
@@ -167,28 +166,3 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
   )
 }
 
-type FeedResult = { url: string; status?: number; entries?: number; sample?: string[]; snippet?: string; error?: string; content_type?: string }
-
-/** Try RuTracker's per-section feed (update detection in M5b depends on it). */
-function FeedCheck() {
-  const check = useMutation({ mutationFn: () => api.get<{ forum_id: number; results: FeedResult[] }>("tracked/feed-check") })
-  return (
-    <div className="mb-3 grid gap-1 text-xs">
-      <div>
-        <Button size="sm" variant="outline" onClick={() => check.mutate()} disabled={check.isPending}>
-          {check.isPending ? "Checking…" : "Check RuTracker feed"}
-        </Button>
-      </div>
-      {check.error && <span className="text-destructive">{errorMessage(check.error)}</span>}
-      {check.data?.results.map((r) => (
-        <div key={r.url} className="text-muted-foreground">
-          <code className="break-all">{r.url}</code> —{" "}
-          {r.error
-            ? <span className="text-destructive">{r.error}</span>
-            : `HTTP ${r.status}, ${r.entries} entries${r.sample?.length ? `: ${r.sample.join(" · ")}` : ""}`}
-          {r.snippet && <pre className="mt-1 whitespace-pre-wrap break-all">{r.snippet}</pre>}
-        </div>
-      ))}
-    </div>
-  )
-}

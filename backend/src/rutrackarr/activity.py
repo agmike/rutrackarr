@@ -207,6 +207,15 @@ class Activity:
                 for r in s.scalars(q)
             ]  # fmt: skip
 
+    def count(self, kind: str, hours: float) -> int:
+        """Events of a kind in the last `hours`."""
+        since = datetime.now(UTC) - timedelta(hours=hours)
+        with self._sessions() as s:
+            return int(
+                s.scalar(select(func.count()).where(EventRow.kind == kind, EventRow.at >= since))
+                or 0
+            )
+
     def stats(self, hours: float) -> dict[str, Any]:
         """Totals for the last `hours`: queries, by caller and kind, from cache (no RuTracker
         request), errors, RuTracker requests, average and slowest answer."""

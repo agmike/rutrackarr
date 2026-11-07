@@ -105,6 +105,9 @@ class Tracker:
         # Search rows by topic id (the Torznab result cache): section and size of a grab.
         self.find_row: Callable[[int], SearchRow | None] = lambda _topic_id: None
         self.spacer: Any = None  # RuTracker request spacing (feeds count against the budget)
+        # Last feed round: when, and per section {forum, status/error, entries, tracked}.
+        self.feeds_at: datetime | None = None
+        self.feed_status: dict[int, dict[str, Any]] = {}
 
     # --- reading -------------------------------------------------------------------------------
 
@@ -297,11 +300,15 @@ class Tracker:
             for forum_id, tracked in by_forum.items():
                 if self.spacer is not None:
                     await self.spacer.wait()
+                status: dict[str, Any] = {"forum": tracked[0].forum, "tracked": len(tracked)}
+                self.feed_status[forum_id] = status
                 try:
                     r = await c.get(FEED_URL.format(forum_id=forum_id))
                     entries = feed_entries(r.text) if r.status_code == 200 else {}
+                    status |= {"status": r.status_code, "entries": len(entries)}
                 except httpx.HTTPError as e:
                     log.warning("feed %s: %s", forum_id, e)
+                    status["error"] = str(e)
                     continue
                 for t in tracked:
                     if t.topic_id not in entries:
@@ -311,6 +318,9 @@ class Tracker:
                         continue
                     await self.check(t.topic_id)
                     checked += 1
+        self.feeds_at = datetime.now(UTC)
+        for forum_id in set(self.feed_status) - set(by_forum):
+            del self.feed_status[forum_id]  # no tracked topics there any more
         return checked
 
     def due(self, limit: int = 2) -> list[Tracked]:
