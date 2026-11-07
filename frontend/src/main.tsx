@@ -5,6 +5,9 @@ import { createBrowserRouter, RouterProvider } from "react-router"
 import "./index.css"
 import App from "./App.tsx"
 import { routerBasename } from "./lib/basename"
+import { OverridesPage } from "./pages/OverridesPage"
+import { QueriesPage } from "./pages/QueriesPage"
+import { SandboxPage } from "./pages/SandboxPage"
 import { SearchPage } from "./pages/SearchPage"
 import { SettingsPage } from "./pages/SettingsPage"
 import { StatusPage } from "./pages/StatusPage"
@@ -20,6 +23,9 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <StatusPage /> },
         { path: "search", element: <SearchPage /> },
+        { path: "sandbox", element: <SandboxPage /> },
+        { path: "queries", element: <QueriesPage /> },
+        { path: "overrides", element: <OverridesPage /> },
         { path: "settings", element: <SettingsPage /> },
       ],
     },

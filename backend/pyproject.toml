@@ -16,6 +16,7 @@ dependencies = [
   "argon2-cffi>=25.1",
   "itsdangerous>=2.2",
   "python-multipart>=0.0.20",
+  "apprise>=1.9",
 ]
 
 [project.scripts]
@@ -54,6 +55,7 @@ ignore = ["S101", "RUF001", "RUF002", "RUF003"]
 "tests/test_idsearch.py" = ["E501"]
 "tests/test_tmdb_search.py" = ["E501"]
 "tests/test_catalogue.py" = ["E501"]
+"tests/test_overrides.py" = ["E501"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

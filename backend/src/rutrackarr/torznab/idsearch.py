@@ -10,7 +10,8 @@ Not anime (or not in the list): Sonarr's title and alternate titles are searched
 """
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+from typing import Any
 
 from rutrackarr.metadata.animelist import AnimeEntry, AnimeList
 from rutrackarr.metadata.shikimori import Shikimori
@@ -61,6 +62,7 @@ class SeriesContext:
     year: int | None = None  # the film's year (Radarr/TMDb)
     tmdb_id: int | None = None
     imdb_id: str | None = None
+    override: Any = None  # torznab.overrides.Override applied to this context, if any
 
 
 @dataclass(frozen=True)
@@ -197,3 +199,22 @@ def match(ctx: SeriesContext, t: ParsedTitle) -> Match | None:
 def _shares_head(name: str, entry: Entry) -> bool:
     candidates = {_head(name), norm(name)} & (entry.heads | entry.names)
     return any(len(c.split()) >= 2 for c in candidates)
+
+
+def with_override(ctx: SeriesContext, ov: Any) -> SeriesContext:
+    """The context with a series/film override applied: its titles searched first (or only),
+    its names accepted as this series', its release title used for naming."""
+    extra = [t for t in ov.extra_titles if norm(t)]
+    queries: list[str] = []
+    seen: set[str] = set()
+    for q in [*extra, *([] if ov.replace_titles else ctx.queries)]:
+        if norm(q) not in seen:
+            seen.add(norm(q))
+            queries.append(q)
+    return replace(
+        ctx,
+        title=ov.release_title or ctx.title,
+        queries=queries,
+        other_names=ctx.other_names | {norm(t) for t in extra},
+        override=ov,
+    )

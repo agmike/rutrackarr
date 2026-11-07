@@ -38,6 +38,8 @@ FIELDS: dict[str, FieldDef] = {
     "qbittorrent.url": FieldDef("url", ""),
     "qbittorrent.username": FieldDef("string", "admin"),
     "qbittorrent.password": FieldDef("secret"),
+    # Alerts: Apprise URLs (space- or comma-separated), e.g. tgram://<bot token>/<chat id>
+    "alerts.apprise_urls": FieldDef("secret"),
     # General
     "general.query_log_retention_days": FieldDef("int", 30, minimum=1, maximum=365),
 }

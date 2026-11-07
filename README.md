@@ -74,6 +74,22 @@ Use categories that don't contain each other: in qBittorrent 5.2 a category also
 subcategories, so e.g. `sonarr/default`, `sonarr/rutracker`, `sonarr/completed` — not `sonarr`
 and `sonarr/rutracker`.
 
+### Web UI
+
+- **Status:** connections (incl. whether Sonarr/Radarr are set up to use RuTrackarr), downloads,
+  recent grabs, activity, query stats and the RuTracker request budget.
+- **Sandbox:** run the exact search Sonarr/Radarr would send for a series or film from their
+  libraries (season/episode), with or without overrides, and see every RuTracker topic with its
+  release name or why it was dropped.
+- **Queries:** the query log — each search with the topics it found and why each was kept or
+  dropped; searches without results; dropped topics (unparsed titles, other series…).
+- **Overrides:** per series/film (TVDB id / TMDb id): extra or replacement search titles, the
+  release title, a season offset, include/exclude title filters, and topics pinned to the series
+  (and a season). JSON export/import.
+- **Alerts:** RuTracker failing or back, FlareSolverr/qBittorrent unreachable, repeated failed
+  searches, topic torrents removed — shown as a banner and sent through
+  [Apprise](https://github.com/caronc/apprise/wiki) (Telegram, ntfy, Discord, email, webhooks…).
+
 ## Security
 
 **RuTrackarr has no built-in login.** Anyone who can reach its web UI can read and change

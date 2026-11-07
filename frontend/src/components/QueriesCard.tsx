@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query"
 import { useState } from "react"
+import { Link } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { api, formatAgo, formatWhen, type QueriesView, type ServiceView } from "@/lib/api"
@@ -26,7 +27,12 @@ export function QueriesCard() {
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div className="grid gap-1.5">
           <CardTitle>Queries</CardTitle>
-          <CardDescription>Searches from Sonarr and Radarr</CardDescription>
+          <CardDescription>
+            Searches from Sonarr and Radarr ·{" "}
+            <Link to="/queries" className="underline">
+              all queries, results and dropped topics
+            </Link>
+          </CardDescription>
         </div>
         <Button variant={errorsOnly ? "default" : "outline"} size="sm" onClick={() => setErrorsOnly((v) => !v)}>
           Errors only

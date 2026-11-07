@@ -9,8 +9,12 @@ from fastapi.staticfiles import StaticFiles
 
 from rutrackarr import __version__
 from rutrackarr.activity import Activity
+from rutrackarr.alerts import Alerts
+from rutrackarr.api import alerts as alerts_api
 from rutrackarr.api import arr as arr_api
+from rutrackarr.api import overrides as overrides_api
 from rutrackarr.api import rutracker as rutracker_api
+from rutrackarr.api import sandbox as sandbox_api
 from rutrackarr.api import settings as settings_api
 from rutrackarr.api import status as status_api
 from rutrackarr.api import system
@@ -33,6 +37,7 @@ from rutrackarr.rutracker.store import SessionStore
 from rutrackarr.settings.service import SettingsService
 from rutrackarr.torznab.downloads import DownloadStore
 from rutrackarr.torznab.idsearch import Resolver
+from rutrackarr.torznab.overrides import OverrideStore
 from rutrackarr.torznab.search import SearchCache
 
 
@@ -64,6 +69,8 @@ def create_app(
 
     app.state.started_at = datetime.now(UTC)
     app.state.activity = Activity(sessions)
+    app.state.alerts = Alerts(lambda: svc.get("alerts.apprise_urls"))
+    app.state.activity.listeners.append(app.state.alerts.on_event)
     store = SessionStore(sessions, box)
     store.on_event = lambda kind, message, level: app.state.activity.event(
         kind, message, level=level
@@ -79,6 +86,8 @@ def create_app(
         transport=transport,
     )
     app.state.rutracker_store = store
+    if store.failing():  # known before this start: shown, not sent again
+        app.state.alerts.raise_("rutracker", f"RuTracker: {store.load().last_error}", notify=False)
     app.state.spacer = spacer
     app.state.rutracker_http = http
     app.state.rutracker = RuTrackerClient(
@@ -86,6 +95,7 @@ def create_app(
     )
 
     app.state.downloads = DownloadStore(sessions)
+    app.state.overrides = OverrideStore(sessions)
     app.state.qbit = Qbit(
         lambda: svc.get("qbittorrent.url"),
         lambda: (svc.get("qbittorrent.username"), svc.get("qbittorrent.password")),
@@ -118,6 +128,9 @@ def create_app(
     app.include_router(rutracker_api.router, prefix=f"{base}/api")
     app.include_router(arr_api.router, prefix=f"{base}/api")
     app.include_router(status_api.router, prefix=f"{base}/api")
+    app.include_router(alerts_api.router, prefix=f"{base}/api")
+    app.include_router(overrides_api.router, prefix=f"{base}/api")
+    app.include_router(sandbox_api.router, prefix=f"{base}/api")
 
     # Built SPA: static assets + index.html fallback for client-side routes.
     # The build uses relative asset URLs; <base href> carries the URL base.

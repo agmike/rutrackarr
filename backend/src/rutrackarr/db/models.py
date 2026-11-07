@@ -97,3 +97,37 @@ class EventRow(Base):
     level: Mapped[str] = mapped_column(String(8), nullable=False, default="info")  # info|warn|error
     message: Mapped[str] = mapped_column(Text, nullable=False)
     topic_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class OverrideRow(Base):
+    """Per series/film search overrides, edited on the Overrides page."""
+
+    __tablename__ = "overrides"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    kind: Mapped[str] = mapped_column(String(8), nullable=False)  # tv (TVDB id) | movie (TMDb id)
+    external_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False, default="")  # for display
+    extra_titles: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # JSON list
+    replace_titles: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    release_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    season_offset: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    include_regex: Mapped[str | None] = mapped_column(Text, nullable=True)
+    exclude_regex: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pins: Mapped[str] = mapped_column(Text, nullable=False, default="[]")  # [{topic_id, season}]
+    note: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class QueryResultRow(Base):
+    """What a logged query found on RuTracker and why each topic was kept or dropped."""
+
+    __tablename__ = "query_results"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    query_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    topic_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    forum: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    release: Mapped[str | None] = mapped_column(Text, nullable=True)  # kept: the release name
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)  # dropped: why

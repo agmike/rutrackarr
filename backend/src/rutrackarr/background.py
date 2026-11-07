@@ -21,6 +21,9 @@ log = logging.getLogger(__name__)
 TICK = 60  # seconds
 HEARTBEAT_EVERY = 300
 PRUNE_EVERY = 6 * 3600
+SERVICES_EVERY = 300
+FAILED_SEARCHES = 5  # failed Torznab searches within FAILED_WINDOW raise an alert
+FAILED_WINDOW = 0.25  # hours
 
 
 async def tick(app: FastAPI, state: dict[str, float]) -> None:
@@ -40,6 +43,9 @@ async def tick(app: FastAPI, state: dict[str, float]) -> None:
             store.record_error(str(e))
         except Exception as e:
             log.warning("heartbeat: %s", e)
+    if now - state.get("services", 0) >= SERVICES_EVERY:
+        state["services"] = now
+        await check_services(app)
     if now - state.get("prune", 0) >= PRUNE_EVERY:
         state["prune"] = now
         try:
@@ -64,3 +70,37 @@ async def lifespan(app: FastAPI) -> AsyncIterator[Any]:
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+async def check_services(app: FastAPI) -> None:
+    """FlareSolverr and qBittorrent reachable; not too many failed searches lately."""
+    alerts = app.state.alerts
+    try:
+        await app.state.rutracker_http.flaresolverr_health()
+        alerts.clear("flaresolverr", "FlareSolverr answers again")
+    except Exception as e:
+        alerts.raise_("flaresolverr", f"FlareSolverr unreachable: {e}")
+    qbit = app.state.qbit
+    if qbit.configured():
+        try:
+            r = await qbit.request("GET", "app/version")
+            if r.status_code != 200:
+                raise RuntimeError(f"HTTP {r.status_code}")
+            alerts.clear("qbittorrent", "qBittorrent answers again")
+        except Exception as e:
+            alerts.raise_("qbittorrent", f"qBittorrent unreachable: {e}")
+    else:
+        alerts.clear("qbittorrent", "qBittorrent proxy switched off")
+    try:
+        failed = app.state.activity.stats(FAILED_WINDOW)["errors"]
+    except Exception as e:
+        log.warning("failed-search check: %s", e)
+        return
+    if failed >= FAILED_SEARCHES:
+        alerts.raise_(
+            "searches",
+            f"{failed} Sonarr/Radarr searches failed in the last {int(FAILED_WINDOW * 60)} min",
+            level="warn",
+        )
+    elif failed == 0:
+        alerts.clear("searches", "searches succeed again")

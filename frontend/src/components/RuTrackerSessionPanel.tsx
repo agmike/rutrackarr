@@ -157,3 +157,16 @@ export function QbittorrentTest({ pending }: { pending: Record<string, string> }
     </Button>
   )
 }
+
+export function AlertsTest({ pending }: { pending: Record<string, string> }) {
+  const test = useMutation({
+    mutationFn: () => api.post<{ status: string }>("alerts/test", { urls: pending["alerts.apprise_urls"] || null }),
+    onSuccess: () => toast.success("Test alert sent"),
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  return (
+    <Button variant="outline" disabled={test.isPending} onClick={() => test.mutate()}>
+      Send test alert
+    </Button>
+  )
+}

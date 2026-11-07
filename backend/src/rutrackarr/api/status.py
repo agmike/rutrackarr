@@ -335,10 +335,15 @@ def events(request: Request, limit: int = 25, exclude: str = "") -> dict[str, An
 
 
 @router.get("/queries")
-def queries(request: Request, limit: int = 25, errors: bool = False) -> dict[str, Any]:
+def queries(
+    request: Request, limit: int = 25, errors: bool = False, empty: bool = False
+) -> dict[str, Any]:
+    """Newest first; `errors`: failed ones only; `empty`: ones that found nothing."""
+    activity = request.app.state.activity
     return {
         "items": [
             {
+                "id": q.id,
                 "at": q.at.isoformat(),
                 "caller": q.caller,
                 "kind": q.kind,
@@ -348,7 +353,7 @@ def queries(request: Request, limit: int = 25, errors: bool = False) -> dict[str
                 "duration_ms": q.duration_ms,
                 "error": q.error,
             }
-            for q in request.app.state.activity.queries(max(1, min(limit, 200)), errors)
+            for q in activity.queries(max(1, min(limit, 200)), errors, empty)
         ]
     }
 
@@ -374,3 +379,19 @@ def grabs(request: Request, limit: int = 10) -> dict[str, Any]:
             }
         )
     return {"items": out}
+
+
+@router.get("/queries/{query_id}")
+def query_detail(query_id: int, request: Request) -> dict[str, Any]:
+    client = request.app.state.rutracker
+    rows = request.app.state.activity.details(query_id)
+    return {"items": [r | {"topic_url": client.topic_url(r["topic_id"])} for r in rows]}
+
+
+@router.get("/dropped")
+def dropped(request: Request, reason: str = "", limit: int = 100) -> dict[str, Any]:
+    """Topics searches found but dropped (newest first); `reason`: a prefix such as "unparsed"
+    or "not " (didn't match the series)."""
+    client = request.app.state.rutracker
+    rows = request.app.state.activity.dropped(reason, max(1, min(limit, 500)))
+    return {"items": [r | {"topic_url": client.topic_url(r["topic_id"])} for r in rows]}

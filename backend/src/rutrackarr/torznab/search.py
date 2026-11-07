@@ -17,7 +17,7 @@ from rutrackarr.releases.sections import Catalogue, Section
 from rutrackarr.releases.title import ParsedTitle, parse_title
 from rutrackarr.rutracker.client import RuTrackerClient
 from rutrackarr.rutracker.parse import Forum, SearchRow
-from rutrackarr.torznab.idsearch import Resolver, SeriesContext, match
+from rutrackarr.torznab.idsearch import Match, Resolver, SeriesContext, match, with_override
 
 _WORD = re.compile(r"[^\W_]+")
 CATALOGUE_TTL = 7 * 24 * 3600
@@ -49,6 +49,30 @@ class Release:
     tvdbid: int | None = None
     tmdbid: int | None = None
     imdbid: str | None = None
+
+
+@dataclass
+class Trace:
+    """How a search went, for the sandbox and the query log: the context it resolved to, the
+    RuTracker searches it made, and every topic seen with its release name or why it was
+    dropped."""
+
+    context: dict | None = None
+    searches: list[dict] = field(default_factory=list)  # {query, results, cached}
+    rows: dict[int, dict] = field(default_factory=dict)  # topic id → {..., release, reason}
+
+    def seen(self, row: SearchRow, release: "Release | None", reason: str | None) -> None:
+        entry = self.rows.setdefault(
+            row.topic_id,
+            {
+                "topic_id": row.topic_id, "title": row.title, "forum": row.forum,
+                "size": row.size, "seeders": row.seeders, "release": None, "reason": None,
+            },
+        )  # fmt: skip
+        if release is not None and reason is None:
+            entry["release"], entry["reason"] = release.name, None
+        elif entry["release"] is None:
+            entry["reason"] = reason
 
 
 def absolute_episode(q: str) -> tuple[str, int | None]:
@@ -132,6 +156,10 @@ class SearchCache:
                 log.warning("section catalogue not saved: %s", e)
 
     async def search(self, q: str) -> list[SearchRow]:
+        return (await self.search_ex(q))[0]
+
+    async def search_ex(self, q: str, fresh: bool = False) -> tuple[list[SearchRow], bool]:
+        """(rows, answered from cache); `fresh` asks RuTracker even when cached."""
         key = " ".join(q.lower().split())
         ttl = self._ttl() if key else self._rss_ttl()
         lock = self._locks.setdefault(key, asyncio.Lock())
@@ -140,15 +168,15 @@ class SearchCache:
             keep = max(self._ttl(), self._rss_ttl())  # drop entries no lookup can use any more
             self._data = {k: v for k, v in self._data.items() if now - v[0] < keep}
             hit = self._data.get(key)
-            if hit and now - hit[0] < ttl:
-                return hit[1]
+            if hit and now - hit[0] < ttl and not fresh:
+                return hit[1], True
             # Video sections only: a common word ("Шерлок") otherwise fills the single result
             # page with audiobooks and books, and the series never shows up.
             forums = self.catalogue.video_ids() if self.catalogue else None
             rows = await self._client.search(q, forums or None)
             self._update_catalogue()
             self._data[key] = (time.monotonic(), rows)
-            return rows
+            return rows, False
 
     def find(self, topic_id: int) -> SearchRow | None:
         """A topic from recent search results (Sonarr grabs what it was just shown)."""
@@ -160,13 +188,20 @@ class SearchCache:
 
 
 def _wanted(req: Request, rel: Release, year: int | None) -> bool:
+    return _reject(req, rel, year) is None
+
+
+def _reject(req: Request, rel: Release, year: int | None) -> str | None:
+    """None when Sonarr/Radarr asked for this release, else why not."""
     if not rel.section.video:
-        return False
+        return f"not a video section ({rel.section.kind or rel.row.forum})"
     movie = is_movie(rel.section, rel.title)
-    if (req.kind == "tvsearch" and movie) or (req.kind == "movie" and not movie):
-        return False
+    if req.kind == "tvsearch" and movie:
+        return "a film, Sonarr asked for a series"
+    if req.kind == "movie" and not movie:
+        return "a series, Radarr asked for a film"
     if req.cats and not set(req.cats) & set(rel.categories):
-        return False
+        return "not in the categories asked for"
     t = rel.title
     if req.season is not None and not movie:
         if rel.season is not None:
@@ -177,7 +212,8 @@ def _wanted(req: Request, rel: Release, year: int | None) -> bool:
             )
             last = t.season_last or season
         if season is not None and not (season <= req.season <= last):
-            return False
+            span = f"S{season}" if season == last else f"S{season}-S{last}"
+            return f"season {req.season} asked for, topic is {span}"
     e = t.episodes
     # Absolute-numbered anime (One Piece 1156-1180) can't be compared with Sonarr's per-season
     # episode numbers; Sonarr maps the absolute numbers itself.
@@ -186,11 +222,13 @@ def _wanted(req: Request, rel: Release, year: int | None) -> bool:
         or (req.absolute is None and is_absolute(t, rel.section))
     )  # fmt: skip
     if req.ep is not None and not unchecked and not (e.first <= req.ep <= e.last):  # type: ignore[union-attr,operator]
-        return False
+        return f"episode {req.ep} asked for, topic has {e.first}-{e.last}"  # type: ignore[union-attr]
     absolute = req.absolute is not None and is_absolute(t, rel.section) and not unchecked
     if absolute and not (e.first <= req.absolute <= e.last):  # type: ignore[union-attr,operator]
-        return False
-    return not (year and movie and t.year and abs(t.year - year) > 1)
+        return f"episode {req.absolute} asked for, topic has {e.first}-{e.last}"  # type: ignore[union-attr]
+    if year and movie and t.year and abs(t.year - year) > 1:
+        return f"year {t.year}, asked for {year}"
+    return None
 
 
 @functools.lru_cache(maxsize=4096)
@@ -218,17 +256,42 @@ def build(
     """A release for Sonarr/Radarr. With an ID search context, topics that aren't the series or
     film are dropped (None); season, episode offset, year, original language and name come
     from the metadata."""
+    return _build(row, query, ctx, catalogue)[0]
+
+
+def _build(
+    row: SearchRow,
+    query: str | None,
+    ctx: SeriesContext | None = None,
+    catalogue: Catalogue | None = None,
+) -> tuple[Release | None, str | None]:
+    """build() with the reason a topic was dropped."""
     title, section, language = _analyse(row.title, section_of(row, catalogue))
     if ctx is None:
         name = release_name(title, section, language, query)
-        return Release(row, title, section, language, name, categories(section, title))
-    m = match(ctx, title)
+        return Release(row, title, section, language, name, categories(section, title)), None
+    ov = ctx.override
+    if ov is not None and (why := ov.allows(row.title)):
+        return None, why
+    pin = ov.pin(row.topic_id) if ov is not None else None
+    m = Match(pin.season, 0, None) if pin else match(ctx, title)
     if m is None:
-        return None
+        if not any(n for n in title.names):
+            return None, "unparsed: no names found in the title"
+        return None, f"not {ctx.title} (names don't match)"
     movie = ctx.kind == "movie"
     if movie and ctx.year and title.year and abs(title.year - ctx.year) > 1:
-        return None  # same name, different film (remakes)
+        return None, f"a different film: {title.year}, not {ctx.year}"  # remakes
     season = None if movie or is_absolute(title, section) else m.season
+    if (
+        season is None
+        and not pin
+        and not movie
+        and ov is not None
+        and ov.season_offset
+        and title.season is not None
+    ):
+        season = title.season + ov.season_offset  # fmt: skip
     if season is None and not movie and title.season is None and title.year and ctx.season_years:
         # A topic without a season number: the season that aired that year.
         season = next((n for n, y in sorted(ctx.season_years.items()) if y == title.year), None)
@@ -240,40 +303,104 @@ def build(
     return Release(
         row, title, section, language, name, categories(section, title),
         season, ctx.tvdb_id, ctx.tmdb_id if movie else None, ctx.imdb_id if movie else None,
-    )  # fmt: skip
+    ), None  # fmt: skip
 
 
-async def run(cache: SearchCache, req: Request, resolver: Resolver | None = None) -> list[Release]:
+async def run(
+    cache: SearchCache,
+    req: Request,
+    resolver: Resolver | None = None,
+    overrides: "Callable[[str, int | None], object] | None" = None,
+    trace: Trace | None = None,
+    fresh: bool = False,
+) -> list[Release]:
+    """`overrides(kind, id)` → the series/film override (or None); `trace` collects how the
+    search went; `fresh` bypasses the RuTracker result cache."""
+    trace = trace if trace is not None else Trace()
     ctx = None
     if resolver is not None and req.kind != "movie" and req.tvdbid:
         ctx = await resolver.tv(req.tvdbid, req.season)
+        ov = overrides("tv", req.tvdbid) if overrides and ctx else None
+        ctx = with_override(ctx, ov) if ctx is not None and ov is not None else ctx
     elif resolver is not None and req.kind == "movie" and (req.tmdbid or req.imdbid):
         ctx = await resolver.movie(req.tmdbid, req.imdbid)
+        ov = overrides("movie", ctx.tmdb_id) if overrides and ctx else None
+        ctx = with_override(ctx, ov) if ctx is not None and ov is not None else ctx
     if ctx is not None:
-        return await _run_ids(cache, req, ctx)
+        trace.context = _describe(ctx)
+        return await _run_ids(cache, req, ctx, trace, fresh)
     if (req.tvdbid or req.tmdbid or req.imdbid) and not req.q:
+        trace.context = {"error": "nothing known about this id, and no title to search for"}
         return []  # nothing known about this id and no title to fall back on
     q, year = clean_query(req.q)
     if req.kind == "search" and req.absolute is None:
         q, req.absolute = absolute_episode(q)
-    rows = await cache.search(q)
-    releases = [r for r in (build(row, q, None, cache.catalogue) for row in rows) if r]
-    if q:
-        releases = [r for r in releases if matches_query(r.title, q)]
-        words = q.split()
-        if not any(r.section.video for r in releases) and len(words) > 2:
-            # RuTracker's search is literal about words ("Journeys" vs "Journey's"): retry wider.
-            rows = await cache.search(" ".join(words[:2]))
-            built = (build(row, q, None, cache.catalogue) for row in rows)
-            releases = [r for r in built if r and matches_query(r.title, q)]
-    return [r for r in releases if _wanted(req, r, year)]
+
+    async def search(text: str) -> list[Release]:
+        rows, cached = await cache.search_ex(text, fresh)
+        trace.searches.append({"query": text, "results": len(rows), "cached": cached})
+        out = []
+        for row in rows:
+            rel, _ = _build(row, q, None, cache.catalogue)
+            if rel is not None and q and not matches_query(rel.title, q):
+                trace.seen(row, None, f"names don't match the query {q!r}")
+                continue
+            if rel is not None:
+                out.append(rel)
+        return out
+
+    releases = await search(q)
+    words = q.split()
+    if q and not any(r.section.video for r in releases) and len(words) > 2:
+        # RuTracker's search is literal about words ("Journeys" vs "Journey's"): retry wider.
+        releases = await search(" ".join(words[:2]))
+    return _keep(req, releases, year, trace)
 
 
-async def _run_ids(cache: SearchCache, req: Request, ctx: SeriesContext) -> list[Release]:
+def _keep(req: Request, releases: list[Release], year: int | None, trace: Trace) -> list[Release]:
+    out = []
+    for rel in releases:
+        why = _reject(req, rel, year)
+        trace.seen(rel.row, rel, why)
+        if why is None:
+            out.append(rel)
+    return out
+
+
+def _describe(ctx: SeriesContext) -> dict:
+    ov = ctx.override
+    return {
+        "kind": ctx.kind, "title": ctx.title, "queries": ctx.queries,
+        "tvdb_id": ctx.tvdb_id, "tmdb_id": ctx.tmdb_id, "imdb_id": ctx.imdb_id,
+        "year": ctx.year, "original_language": ctx.original_language,
+        "seasons": [
+            {"season": e.season, "offset": e.offset, "names": [e.russian, e.romaji]}
+            for e in ctx.entries
+        ],
+        "override": ov.to_json() if ov is not None else None,
+    }  # fmt: skip
+
+
+async def _run_ids(
+    cache: SearchCache,
+    req: Request,
+    ctx: SeriesContext,
+    trace: Trace | None = None,
+    fresh: bool = False,
+) -> list[Release]:
     """One RuTracker search per name of the series (cached), merged by topic."""
+    trace = trace if trace is not None else Trace()
     rows: dict[int, SearchRow] = {}
     for q in ctx.queries:
-        for row in await cache.search(q):
+        found, cached = await cache.search_ex(q, fresh)
+        trace.searches.append({"query": q, "results": len(found), "cached": cached})
+        for row in found:
             rows.setdefault(row.topic_id, row)
-    releases = [r for r in (build(row, None, ctx, cache.catalogue) for row in rows.values()) if r]
-    return [r for r in releases if _wanted(req, r, None)]
+    releases = []
+    for row in rows.values():
+        rel, why = _build(row, None, ctx, cache.catalogue)
+        if rel is None:
+            trace.seen(row, None, why)
+        else:
+            releases.append(rel)
+    return _keep(req, releases, None, trace)

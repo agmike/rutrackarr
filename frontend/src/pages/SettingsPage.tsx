@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { ApiKeyCard } from "@/components/ApiKeyCard"
 import {
+  AlertsTest,
   ArrConnectionTests,
   FlareSolverrTest,
   QbittorrentTest,
@@ -79,6 +80,26 @@ const qbittorrent: FieldSpec[] = [
   { key: "qbittorrent.password", label: "Password", type: "secret" },
 ]
 
+const alerts: FieldSpec[] = [
+  {
+    key: "alerts.apprise_urls",
+    label: "Apprise URLs",
+    type: "secret",
+    placeholder: "tgram://<bot token>/<chat id>  ntfy://ntfy.sh/<topic>",
+    help: (
+      <>
+        Where alerts go — one or more{" "}
+        <a className="underline" href="https://github.com/caronc/apprise/wiki" target="_blank" rel="noreferrer">
+          Apprise URLs
+        </a>
+        , separated by spaces: Telegram, ntfy, Discord, Gotify, email, a JSON webhook… Sent when RuTracker fails or comes
+        back, FlareSolverr or qBittorrent stop answering, searches keep failing, or a topic torrent disappears. Active
+        problems also show as a banner on every page.
+      </>
+    ),
+  },
+]
+
 const general: FieldSpec[] = [
   { key: "general.query_log_retention_days", label: "Keep query log for (days)", type: "number" },
 ]
@@ -136,6 +157,11 @@ export function SettingsPage() {
           view={data}
         >
           {(pending) => <QbittorrentTest pending={pending} />}
+        </SettingsSection>
+      </section>
+      <section id="alerts">
+        <SettingsSection title="Alerts" description="Notifications through Apprise." fields={alerts} view={data}>
+          {(pending) => <AlertsTest pending={pending} />}
         </SettingsSection>
       </section>
       <section id="general">

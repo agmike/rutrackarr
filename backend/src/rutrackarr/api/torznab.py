@@ -17,7 +17,7 @@ from rutrackarr.rutracker.errors import RuTrackerError
 from rutrackarr.rutracker.ratelimit import REQUEST_COUNT
 from rutrackarr.torznab import feed
 from rutrackarr.torznab.search import Request as SearchRequest
-from rutrackarr.torznab.search import run
+from rutrackarr.torznab.search import Trace, run
 
 router = APIRouter(tags=["torznab"])
 log = logging.getLogger(__name__)
@@ -65,9 +65,12 @@ async def api(request: Request) -> Response:
     )
     started, counter = time.monotonic(), [0]
     token = REQUEST_COUNT.set(counter)
-    releases, error = [], None
+    releases, error, trace = [], None, Trace()
     try:
-        releases = await run(request.app.state.torznab_cache, req, request.app.state.resolver)
+        releases = await run(
+            request.app.state.torznab_cache, req, request.app.state.resolver,
+            overrides=request.app.state.overrides.get, trace=trace,
+        )  # fmt: skip
     except RuTrackerError as e:
         error = str(e)
         request.app.state.rutracker_store.record_error(error)
@@ -82,6 +85,7 @@ async def api(request: Request) -> Response:
             counter[0],
             round((time.monotonic() - started) * 1000),
             error,
+            list(trace.rows.values()),
         )
     if error is not None:
         return Response(feed.error(900, f"RuTracker: {error}"), media_type=XML)

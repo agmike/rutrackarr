@@ -233,6 +233,7 @@ export type GrabsView = { items: Grab[] }
 export type ActivityEvent = { at: string; kind: string; level: "info" | "warn" | "error"; message: string; topic_url: string | null }
 export type EventsView = { items: ActivityEvent[] }
 export type QueryEntry = {
+  id: number
   at: string
   caller: string
   kind: string
@@ -271,4 +272,87 @@ export function formatAgo(iso: string | null): string {
   if (s < 3600) return `${Math.floor(s / 60)} min ago`
   if (s < 86400) return `${Math.floor(s / 3600)} h ago`
   return `${Math.floor(s / 86400)} d ago`
+}
+
+export const del = <T,>(path: string) =>
+  fetch(`api/${path}`, { method: "DELETE", headers: { Accept: "application/json" } }).then(async (res) => {
+    const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null
+    if (!res.ok) throw new ApiError(res.status, data?.detail ?? data)
+    return data as T
+  })
+
+export type AlertItem = { key: string; level: "warn" | "error"; message: string; since: string }
+export type AlertsView = { items: AlertItem[] }
+
+export type Pin = { topic_id: number; season: number | null }
+export type Override = {
+  id?: number | null
+  kind: "tv" | "movie"
+  external_id: number
+  title: string
+  extra_titles: string[]
+  replace_titles: boolean
+  release_title: string | null
+  season_offset: number | null
+  include_regex: string | null
+  exclude_regex: string | null
+  pins: Pin[]
+  note: string
+  updated_at?: string | null
+}
+export type OverridesView = { items: Override[] }
+
+export type LibraryItem = {
+  kind: "tvsearch" | "movie"
+  title: string
+  year: number | null
+  tvdbid: number | null
+  tmdbid: number | null
+  imdbid: string | null
+  series_type: string | null
+  seasons: number[]
+}
+
+export type SandboxRow = {
+  topic_id: number
+  title: string
+  forum: string
+  size: number
+  seeders: number
+  release: string | null
+  reason: string | null
+  topic_url: string
+  kept: boolean
+  season: number | null
+  categories: number[]
+  language: string | null
+}
+export type SandboxResult = {
+  took_ms: number
+  error: string | null
+  context: {
+    kind?: string
+    title?: string
+    queries?: string[]
+    year?: number | null
+    original_language?: string | null
+    seasons?: { season: number | null; offset: number; names: string[] }[]
+    override?: Override | null
+    error?: string
+  } | null
+  searches: { query: string; results: number; cached: boolean }[]
+  kept: number
+  rows: SandboxRow[]
+}
+
+export type QueryDetail = { topic_id: number; title: string; forum: string; release: string | null; reason: string | null; topic_url: string }
+export type DroppedTopic = {
+  topic_id: number
+  title: string
+  forum: string
+  reason: string
+  times: number
+  last_seen: string
+  last_query: string
+  topic_url: string
 }

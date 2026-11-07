@@ -1,13 +1,17 @@
-import { Activity, Search, Settings } from "lucide-react"
+import { Activity, FlaskConical, ListTree, Search, Settings, SlidersHorizontal } from "lucide-react"
 import { useEffect } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
 import { Toaster } from "sonner"
+import { AlertBanner } from "@/components/AlertBanner"
 import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 
 const nav = [
   { to: "/", label: "Status", icon: Activity, end: true },
   { to: "/search", label: "Search", icon: Search, end: false },
+  { to: "/sandbox", label: "Sandbox", icon: FlaskConical, end: false },
+  { to: "/queries", label: "Queries", icon: ListTree, end: false },
+  { to: "/overrides", label: "Overrides", icon: SlidersHorizontal, end: false },
   { to: "/settings", label: "Settings", icon: Settings, end: false },
 ]
 
@@ -44,6 +48,7 @@ export default function App() {
       </aside>
       <main className="flex-1 p-6">
         <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1>
+        <AlertBanner />
         <Outlet />
       </main>
       <Toaster theme="dark" richColors position="bottom-right" />
