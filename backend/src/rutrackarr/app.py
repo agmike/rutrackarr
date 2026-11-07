@@ -19,6 +19,7 @@ from rutrackarr.api import settings as settings_api
 from rutrackarr.api import status as status_api
 from rutrackarr.api import system
 from rutrackarr.api import torznab as torznab_api
+from rutrackarr.api import tracked as tracked_api
 from rutrackarr.background import lifespan
 from rutrackarr.config import BootstrapSettings
 from rutrackarr.crypto import SecretBox
@@ -39,6 +40,7 @@ from rutrackarr.torznab.downloads import DownloadStore
 from rutrackarr.torznab.idsearch import Resolver
 from rutrackarr.torznab.overrides import OverrideStore
 from rutrackarr.torznab.search import SearchCache
+from rutrackarr.tracking.tracker import Tracker
 
 
 def create_app(
@@ -101,6 +103,10 @@ def create_app(
         lambda: svc.qbittorrent_target()[1:],
         transport,
     )
+    app.state.tracker = Tracker(
+        sessions, app.state.qbit, app.state.activity, app.state.downloads, svc,
+        app.state.rutracker, transport,
+    )  # fmt: skip
     ua = f"RuTrackarr/{__version__} (+https://github.com/agmike/rutrackarr)"
     app.state.animelist = AnimeList(settings.data_dir / "anime-list.json", transport, user_agent=ua)
     app.state.shikimori = Shikimori(MetadataCache(sessions), transport, user_agent=ua)
@@ -131,6 +137,7 @@ def create_app(
     app.include_router(alerts_api.router, prefix=f"{base}/api")
     app.include_router(overrides_api.router, prefix=f"{base}/api")
     app.include_router(sandbox_api.router, prefix=f"{base}/api")
+    app.include_router(tracked_api.router, prefix=f"{base}/api")
 
     # Built SPA: static assets + index.html fallback for client-side routes.
     # The build uses relative asset URLs; <base href> carries the URL base.

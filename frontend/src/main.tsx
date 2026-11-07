@@ -11,6 +11,7 @@ import { SandboxPage } from "./pages/SandboxPage"
 import { SearchPage } from "./pages/SearchPage"
 import { SettingsPage } from "./pages/SettingsPage"
 import { StatusPage } from "./pages/StatusPage"
+import { TrackedPage } from "./pages/TrackedPage"
 
 // Dark by default (shadcn theme variables switch on the .dark class).
 document.documentElement.classList.add("dark")
@@ -23,6 +24,7 @@ const router = createBrowserRouter(
       children: [
         { index: true, element: <StatusPage /> },
         { path: "search", element: <SearchPage /> },
+        { path: "tracked", element: <TrackedPage /> },
         { path: "sandbox", element: <SandboxPage /> },
         { path: "queries", element: <QueriesPage /> },
         { path: "overrides", element: <OverridesPage /> },

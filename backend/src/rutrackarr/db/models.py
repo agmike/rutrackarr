@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -55,6 +55,10 @@ class DownloadRow(Base):
     real_hash: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
     category: Mapped[str | None] = mapped_column(Text, nullable=True)
     added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # What Sonarr/Radarr grabbed it as (from the Torznab result): series (TVDB) or film (TMDb).
+    content_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    content_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    season: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
@@ -131,3 +135,28 @@ class QueryResultRow(Base):
     forum: Mapped[str] = mapped_column(Text, nullable=False, default="")
     release: Mapped[str | None] = mapped_column(Text, nullable=True)  # kept: the release name
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)  # dropped: why
+
+
+class TrackedRow(Base):
+    """A RuTracker topic RuTrackarr follows: tracked by hand (RuTrackarr owns its torrent) or
+    because Sonarr/Radarr grabbed it. Linked to a series/film once a search matches it."""
+
+    __tablename__ = "tracked_topics"
+
+    topic_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    title: Mapped[str] = mapped_column(Text, nullable=False)
+    forum: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    forum_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    size: Mapped[int] = mapped_column(BigInteger, nullable=False, default=0)
+    seeders: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    info_hash: Mapped[str] = mapped_column(String(40), nullable=False, index=True)  # real torrent
+    source: Mapped[str] = mapped_column(String(8), nullable=False)  # manual | grab
+    state: Mapped[str] = mapped_column(String(8), nullable=False, default="active")  # active|gone
+    content_kind: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    content_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    season: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    content_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)

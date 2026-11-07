@@ -18,7 +18,6 @@ Everything is passed through, except what makes RuTracker topics import like any
 Sonarr and Radarr log in with the RuTrackarr API key as the password (any user name).
 """
 
-import asyncio
 import hashlib
 import hmac
 import json
@@ -29,8 +28,9 @@ from fastapi import APIRouter, Request, Response
 from starlette.datastructures import UploadFile
 
 from rutrackarr.activity import Activity
+from rutrackarr.qbit import topics
 from rutrackarr.qbit.upstream import Qbit, QbitError
-from rutrackarr.releases.naming import file_tag, tagged
+from rutrackarr.releases.naming import file_tag
 from rutrackarr.rutracker import torrent
 from rutrackarr.torznab.downloads import Download, DownloadStore
 
@@ -39,7 +39,6 @@ router = APIRouter()
 
 COOKIE = "SID"
 FINISHED_STOPPED = {"pausedUP", "stoppedUP"}
-ADD_WAIT_SECONDS = 15
 
 
 def _token(api_key: str) -> str:
@@ -70,7 +69,9 @@ async def api(path: str, request: Request) -> Response:
     if not qbit.configured():
         return _text("RuTrackarr: qBittorrent is not configured", 502)
     await request.body()  # cached: forwarded as is, and parsed as a form where needed
-    proxy = _Proxy(qbit, request.app.state.downloads, request.app.state.activity)
+    proxy = _Proxy(
+        qbit, request.app.state.downloads, request.app.state.activity, request.app.state.tracker
+    )
     try:
         if path == "torrents/add" and request.method == "POST":
             return await proxy.add(request)
@@ -110,8 +111,8 @@ async def _params(request: Request) -> dict[str, str]:
 
 
 class _Proxy:
-    def __init__(self, qbit: Qbit, store: DownloadStore, activity: Activity) -> None:
-        self.qbit, self.store, self.activity = qbit, store, activity
+    def __init__(self, qbit: Qbit, store: DownloadStore, activity: Activity, tracker: Any) -> None:
+        self.qbit, self.store, self.activity, self.tracker = qbit, store, activity, tracker
         self._active: list[Download] | None = None
 
     def active(self) -> list[Download]:
@@ -180,22 +181,20 @@ class _Proxy:
         )
         present = await self.qbit.json("torrents/info", hashes=rhash)
         if not present:
-            add = {k: v for k, v in fields.items() if k not in ("stopped", "paused", "urls")}
-            add |= {"stopped": "true", "paused": "true"}
-            r = await self.qbit.request(
-                "POST", "torrents/add", data=add,
-                files=[("torrents", (filename, real, "application/x-bittorrent"))],
-            )  # fmt: skip
-            if r.status_code != 200 or r.text.strip() == "Fails.":
-                log.warning("qbit add %s failed: HTTP %s %s", rhash, r.status_code, r.text[:200])
+            if not await topics.add(
+                self.qbit, real, filename, file_tag(release), fields, stopped=want_stopped
+            ):
                 return False
-            await self._rename(rhash, file_tag(release))
-            if not want_stopped:
-                await self._start(rhash)
-        elif category and present[0].get("category") != category:
+        elif (
+            category
+            and present[0].get("category") != category
+            and not self.tracker.owns(rhash)  # a topic tracked by hand stays where it is
+        ):
             # In use again (a new release of a finished topic): back to the download category.
             await self._move(rhash, category)
         self.store.added(virtual_info, release, rhash, category)
+        if (grabbed := self.store.get(virtual_info.info_hash)) is not None:
+            self.tracker.on_grab(grabbed, rhash)
         how = "files tagged, started" if not want_stopped else "files tagged, stopped"
         self.activity.event(
             "added",
@@ -205,41 +204,15 @@ class _Proxy:
         log.info("qbit add: %s → %s (%s)", release, rhash, "new" if not present else "present")
         return True
 
-    async def _files(self, rhash: str) -> list[dict[str, Any]]:
-        for _ in range(ADD_WAIT_SECONDS * 4):
-            r = await self.qbit.request("GET", "torrents/files", params={"hash": rhash})
-            if r.status_code == 200 and (files := r.json()):
-                return files  # type: ignore[no-any-return]
-            await asyncio.sleep(0.25)
-        raise QbitError(f"torrent {rhash} did not show up in qBittorrent")
-
-    async def _rename(self, rhash: str, tag: str) -> None:
-        for f in await self._files(rhash):
-            old = f.get("name", "")
-            new = tagged(old, tag)
-            if new != old:
-                r = await self.qbit.post(
-                    "torrents/renameFile", hash=rhash, oldPath=old, newPath=new
-                )
-                if r.status_code != 200:
-                    log.warning("qbit rename %s: HTTP %s", old, r.status_code)
-
     async def _move(self, rhash: str, category: str) -> None:
-        r = await self.qbit.post("torrents/setCategory", hashes=rhash, category=category)
-        if r.status_code != 200:
-            log.warning("qbit move %s to %r: HTTP %s", rhash, category, r.status_code)
-
-    async def _start(self, rhash: str) -> None:
-        r = await self.qbit.post("torrents/start", hashes=rhash)
-        if r.status_code == 404:  # qBittorrent < 5
-            await self.qbit.post("torrents/resume", hashes=rhash)
+        await topics.move(self.qbit, rhash, category)
 
     # --- torrents/info -----------------------------------------------------------------------
 
     async def info(self, params: dict[str, str]) -> Response:
         active = self.active()
         by_hash = {d.info_hash: d for d in active}
-        managed = {d.real_hash for d in active}
+        managed = {d.real_hash for d in active} | {t.info_hash for t in self.tracker.all(False)}
         asked = [h for h in params.get("hashes", "").split("|") if h]
         virtual_asked = [by_hash[h.upper()] for h in asked if h.upper() in by_hash]
         upstream = dict(params)
@@ -265,7 +238,7 @@ class _Proxy:
                 if (real := reals.get(d.real_hash or "")) is not None:
                     out.append(_virtual(real, d))
                 else:
-                    forget_gone(self.store, self.activity, d)
+                    forget_gone(self.store, self.activity, d, self.tracker)
         return Response(_json(out), media_type="application/json")
 
     # --- commands on virtual hashes ----------------------------------------------------------
@@ -282,7 +255,7 @@ class _Proxy:
         active = [d for d in self.store.active() if d.real_hash]
         for real in sorted(r for r in reals if r):
             cats = {d.category or "" for d in active if d.real_hash == real}
-            if cats == {category} and category:
+            if cats == {category} and category and not self.tracker.owns(real):
                 await self._move(real.lower(), category)
                 names = [d.release or d.name for d in active if d.real_hash == real]
                 self.activity.event(
@@ -303,7 +276,11 @@ class _Proxy:
         for h in removed:
             self.store.removed(h)
         still_used = {d.real_hash for d in self.active() if d.info_hash not in removed}
-        reals = {virtual[h].real_hash for h in removed} - still_used
+        # A topic tracked by hand stays: RuTrackarr's, not Sonarr's/Radarr's to delete.
+        reals = {
+            r for r in {virtual[h].real_hash for h in removed} - still_used
+            if r and not self.tracker.owns(r)
+        }  # fmt: skip
         rest = [h for h in hashes if h and h.upper() not in virtual]
         rest += [h.lower() for h in reals if h]
         for h in removed:
@@ -371,9 +348,11 @@ def _json(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False).encode()
 
 
-def forget_gone(store: DownloadStore, activity: Activity, d: Download) -> None:
+def forget_gone(store: DownloadStore, activity: Activity, d: Download, tracker: Any = None) -> None:
     """A release whose topic torrent is no longer in qBittorrent: stop tracking it."""
     store.removed(d.info_hash)
+    if tracker is not None and d.real_hash:
+        tracker.gone(d.real_hash)
     activity.event(
         "gone",
         f"Topic torrent removed from qBittorrent: {d.release or d.name} — no longer tracked",

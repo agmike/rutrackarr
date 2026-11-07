@@ -45,6 +45,10 @@ FIELDS: dict[str, FieldDef] = {
     "qbittorrent.password": FieldDef("secret"),
     "qui.url": FieldDef("url", ""),
     "qui.token": FieldDef("secret"),
+    # Tracked topics: track what Sonarr/Radarr grab; qBittorrent category for topics tracked by
+    # hand (one no Sonarr/Radarr client asks for)
+    "tracking.auto_track": FieldDef("choice", "on", choices=("on", "off")),
+    "tracking.category": FieldDef("string", "rutrackarr/tracked"),
     # Alerts: Apprise URLs (space- or comma-separated), e.g. tgram://<bot token>/<chat id>
     "alerts.apprise_urls": FieldDef("secret"),
     # General

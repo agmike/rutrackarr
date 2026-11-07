@@ -25,6 +25,9 @@ class Download:
     added: bool = False
     created_at: datetime | None = None  # served
     added_at: datetime | None = None  # added through the proxy
+    content_kind: str | None = None  # tv | movie: what Sonarr/Radarr grabbed it as
+    content_id: int | None = None  # TVDB id / TMDb id
+    season: int | None = None
 
 
 class DownloadStore:
@@ -38,13 +41,17 @@ class DownloadStore:
         title: str,
         forum: str,
         release: str | None = None,
+        content: tuple[str, int, int | None] | None = None,
     ) -> None:
-        """`info` is the torrent as served (marked: its hash is the one Sonarr/Radarr track)."""
+        """`info` is the torrent as served (marked: its hash is the one Sonarr/Radarr track);
+        `content`: (tv|movie, TVDB/TMDb id, season) of the search result it was grabbed from."""
         with self._sessions.begin() as s:
             row = s.get(DownloadRow, info.info_hash) or DownloadRow(info_hash=info.info_hash)
             row.topic_id, row.title, row.forum, row.name = topic_id, title, forum, info.name
             row.files = json.dumps([[path, size] for path, size in info.files], ensure_ascii=False)
             row.release = release
+            if content is not None:
+                row.content_kind, row.content_id, row.season = content
             row.created_at = datetime.now(UTC)
             s.merge(row)
 
@@ -99,6 +106,7 @@ def _download(row: DownloadRow) -> Download:
         release=row.release, real_hash=row.real_hash, category=row.category,
         added=row.added_at is not None,
         created_at=_utc(row.created_at), added_at=_utc(row.added_at),
+        content_kind=row.content_kind, content_id=row.content_id, season=row.season,
     )  # fmt: skip
 
 

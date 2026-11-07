@@ -250,7 +250,7 @@ async def downloads(request: Request) -> dict[str, Any]:
     for d in active:
         t = reals.get(d.real_hash or "")
         if t is None and error is None:
-            forget_gone(store, activity, d)
+            forget_gone(store, activity, d, request.app.state.tracker)
             continue
         items.append(
             {

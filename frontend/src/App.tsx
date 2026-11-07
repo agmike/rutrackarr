@@ -1,4 +1,4 @@
-import { Activity, FlaskConical, ListTree, Search, Settings, SlidersHorizontal } from "lucide-react"
+import { Activity, BookmarkCheck, FlaskConical, ListTree, Search, Settings, SlidersHorizontal } from "lucide-react"
 import { useEffect } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
 import { Toaster } from "sonner"
@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils"
 const nav = [
   { to: "/", label: "Status", icon: Activity, end: true },
   { to: "/search", label: "Search", icon: Search, end: false },
+  { to: "/tracked", label: "Tracked", icon: BookmarkCheck, end: false },
   { to: "/sandbox", label: "Sandbox", icon: FlaskConical, end: false },
   { to: "/queries", label: "Queries", icon: ListTree, end: false },
   { to: "/overrides", label: "Overrides", icon: SlidersHorizontal, end: false },

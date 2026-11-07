@@ -60,6 +60,7 @@ class Trace:
     context: dict | None = None
     searches: list[dict] = field(default_factory=list)  # {query, results, cached}
     rows: dict[int, dict] = field(default_factory=dict)  # topic id → {..., release, reason}
+    tracked: set[int] = field(default_factory=set)  # topic ids that came from tracked topics
 
     def seen(self, row: SearchRow, release: "Release | None", reason: str | None) -> None:
         entry = self.rows.setdefault(
@@ -67,6 +68,7 @@ class Trace:
             {
                 "topic_id": row.topic_id, "title": row.title, "forum": row.forum,
                 "size": row.size, "seeders": row.seeders, "release": None, "reason": None,
+                "tracked": row.topic_id in self.tracked,
             },
         )  # fmt: skip
         if release is not None and reason is None:
@@ -313,10 +315,14 @@ async def run(
     overrides: "Callable[[str, int | None], object] | None" = None,
     trace: Trace | None = None,
     fresh: bool = False,
+    tracked: "Callable[[], list[SearchRow]] | None" = None,
 ) -> list[Release]:
     """`overrides(kind, id)` → the series/film override (or None); `trace` collects how the
-    search went; `fresh` bypasses the RuTracker result cache."""
+    search went; `fresh` bypasses the RuTracker result cache; `tracked()` → tracked topics,
+    which take part in every search like RuTracker's results."""
     trace = trace if trace is not None else Trace()
+    extra = tracked() if tracked else []
+    trace.tracked = {r.topic_id for r in extra}
     ctx = None
     if resolver is not None and req.kind != "movie" and req.tvdbid:
         ctx = await resolver.tv(req.tvdbid, req.season)
@@ -328,7 +334,7 @@ async def run(
         ctx = with_override(ctx, ov) if ctx is not None and ov is not None else ctx
     if ctx is not None:
         trace.context = _describe(ctx)
-        return await _run_ids(cache, req, ctx, trace, fresh)
+        return await _run_ids(cache, req, ctx, trace, fresh, extra)
     if (req.tvdbid or req.tmdbid or req.imdbid) and not req.q:
         trace.context = {"error": "nothing known about this id, and no title to search for"}
         return []  # nothing known about this id and no title to fall back on
@@ -339,8 +345,9 @@ async def run(
     async def search(text: str) -> list[Release]:
         rows, cached = await cache.search_ex(text, fresh)
         trace.searches.append({"query": text, "results": len(rows), "cached": cached})
+        seen = {r.topic_id for r in rows}
         out = []
-        for row in rows:
+        for row in [*rows, *(r for r in extra if r.topic_id not in seen)]:
             rel, _ = _build(row, q, None, cache.catalogue)
             if rel is not None and q and not matches_query(rel.title, q):
                 trace.seen(row, None, f"names don't match the query {q!r}")
@@ -387,8 +394,10 @@ async def _run_ids(
     ctx: SeriesContext,
     trace: Trace | None = None,
     fresh: bool = False,
+    extra: list[SearchRow] | None = None,
 ) -> list[Release]:
-    """One RuTracker search per name of the series (cached), merged by topic."""
+    """One RuTracker search per name of the series (cached), merged by topic, plus the tracked
+    topics."""
     trace = trace if trace is not None else Trace()
     rows: dict[int, SearchRow] = {}
     for q in ctx.queries:
@@ -396,6 +405,8 @@ async def _run_ids(
         trace.searches.append({"query": q, "results": len(found), "cached": cached})
         for row in found:
             rows.setdefault(row.topic_id, row)
+    for row in extra or []:
+        rows.setdefault(row.topic_id, row)  # RuTracker's own row (fresh seeders) wins
     releases = []
     for row in rows.values():
         rel, why = _build(row, None, ctx, cache.catalogue)

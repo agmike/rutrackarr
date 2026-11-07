@@ -2,6 +2,7 @@
 
 import logging
 import time
+from typing import Any
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, Response
@@ -70,7 +71,9 @@ async def api(request: Request) -> Response:
         releases = await run(
             request.app.state.torznab_cache, req, request.app.state.resolver,
             overrides=request.app.state.overrides.get, trace=trace,
+            tracked=request.app.state.tracker.search_rows,
         )  # fmt: skip
+        _link_tracked(request, releases, trace)
     except RuTrackerError as e:
         error = str(e)
         request.app.state.rutracker_store.record_error(error)
@@ -96,13 +99,42 @@ async def api(request: Request) -> Response:
         feed.results(
             releases,
             download_url=lambda rel: (
-                f"{base}/torznab/download/{rel.row.topic_id}?"
-                + urlencode({"apikey": key, "name": rel.name})
+                f"{base}/torznab/download/{rel.row.topic_id}?" + urlencode(_link_params(key, rel))
             ),
             topic_url=client.topic_url,
         ),
         media_type=XML,
     )
+
+
+def _link_tracked(request: Request, releases: list, trace: Trace) -> None:
+    """Tracked topics a series/film search matched: remember which one they are."""
+    tracker = request.app.state.tracker
+    for rel in releases:
+        if rel.row.topic_id not in trace.tracked:
+            continue
+        if rel.tvdbid:
+            tracker.link(rel.row.topic_id, "tv", rel.tvdbid, _season(rel), rel.name)
+        elif rel.tmdbid:
+            tracker.link(rel.row.topic_id, "movie", rel.tmdbid, None, rel.name)
+
+
+def _link_params(key: str, rel: Any) -> dict[str, str]:
+    """Download link query: the release name, and what it is (so a grab can be tracked as that
+    series/film)."""
+    params = {"apikey": key, "name": rel.name}
+    if rel.tmdbid and not rel.tvdbid:
+        params |= {"tmdbid": str(rel.tmdbid)}
+    elif rel.tvdbid:
+        params |= {"tvdbid": str(rel.tvdbid)}
+        if (season := _season(rel)) is not None:
+            params["season"] = str(season)
+    return params
+
+
+def _season(rel: Any) -> int | None:
+    """The release's season: from the metadata (anime), else from the topic title."""
+    return rel.season if rel.season is not None else rel.title.season
 
 
 def _has_ids(req: SearchRequest) -> bool:
@@ -124,7 +156,14 @@ def _describe(req: SearchRequest) -> str:
 
 
 @router.get("/download/{topic_id}")
-async def download(topic_id: int, request: Request, name: str = "") -> Response:
+async def download(
+    topic_id: int,
+    request: Request,
+    name: str = "",
+    tvdbid: int | None = None,
+    tmdbid: int | None = None,
+    season: int | None = None,
+) -> Response:
     """The .torrent, fetched from RuTracker when asked for and never stored (it has the passkey).
 
     With the qBittorrent proxy on, marked with the release `name` (see rutrackarr.qbit.proxy):
@@ -149,7 +188,8 @@ async def download(topic_id: int, request: Request, name: str = "") -> Response:
         except torrent.TorrentError as e:
             log.warning("topic %s: could not mark the torrent: %s", topic_id, e)
             release = ""
-    _remember(request, topic_id, data, release or None)
+    content = ("tv", tvdbid, season) if tvdbid else ("movie", tmdbid, None) if tmdbid else None
+    _remember(request, topic_id, data, release or None, content)
     return Response(
         data,
         media_type="application/x-bittorrent",
@@ -157,7 +197,13 @@ async def download(topic_id: int, request: Request, name: str = "") -> Response:
     )
 
 
-def _remember(request: Request, topic_id: int, data: bytes, release: str | None = None) -> None:
+def _remember(
+    request: Request,
+    topic_id: int,
+    data: bytes,
+    release: str | None = None,
+    content: tuple[str, int, int | None] | None = None,
+) -> None:
     """Keep the info hash and file list (not the torrent) for the import script."""
     try:
         info = torrent.read(data)
@@ -166,7 +212,7 @@ def _remember(request: Request, topic_id: int, data: bytes, release: str | None 
         return
     row = request.app.state.torznab_cache.find(topic_id)
     request.app.state.downloads.remember(
-        info, topic_id, row.title if row else "", row.forum if row else "", release
+        info, topic_id, row.title if row else "", row.forum if row else "", release, content
     )
 
 

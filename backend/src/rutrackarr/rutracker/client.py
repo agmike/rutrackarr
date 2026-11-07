@@ -21,6 +21,7 @@ from rutrackarr.rutracker.store import SessionStore
 LOGIN = "forum/login.php"
 SEARCH = "forum/tracker.php"
 DOWNLOAD = "forum/dl.php"
+TOPIC = "forum/viewtopic.php"
 CAPTCHA_TTL = 600
 
 
@@ -154,6 +155,29 @@ class RuTrackerClient:
         self._store.mark_ok()
         self.last_forums = parse.forums(page.text) or self.last_forums
         return parse.search_rows(page.text)
+
+    async def topic(self, topic_id: int) -> parse.TopicInfo:
+        """Title and section of a topic, from its page."""
+        params = {"t": str(topic_id)}
+        page = await self._http.request("GET", TOPIC, params=params)
+        kind = parse.classify(page.text)
+        if kind is PageKind.LOGIN_FORM:
+            result = await self.login()
+            if result.status != "ok":
+                raise CaptchaRequiredError(
+                    "RuTracker asks for a captcha — log in on the settings page"
+                )
+            page = await self._http.request("GET", TOPIC, params=params)
+            kind = parse.classify(page.text)
+        if kind is PageKind.CAPTCHA:
+            raise CaptchaRequiredError("RuTracker asks for a captcha — log in on the settings page")
+        info = parse.topic_info(page.text) if kind is PageKind.LOGGED_IN else None
+        if info is None:
+            raise UnexpectedPageError(
+                f"Unexpected topic page: {parse.page_summary(page.text, page.status_code)}"
+            )
+        self._store.mark_ok()
+        return info
 
     async def download(self, topic_id: int) -> bytes:
         resp = await self._http.request("GET", DOWNLOAD, params={"t": str(topic_id)})

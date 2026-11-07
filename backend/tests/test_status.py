@@ -101,7 +101,7 @@ def test_downloads_and_activity(api, net, qbit):  # noqa: F811
     assert events(api)[0][0] == "added"
     assert api.get("/api/status/grabs").json()["items"][0]["via_proxy"] is True
     no_grabs = api.get("/api/status/events", params={"exclude": "grab"}).json()["items"]
-    assert [e["kind"] for e in no_grabs] == ["added"]
+    assert [e["kind"] for e in no_grabs] == ["added", "tracked"]  # grabs are auto-tracked
     real = torrent.read(data).info_hash.lower()
     qbit.torrents[real] |= {"progress": 0.25, "dlspeed": 1000, "upspeed": 50, "uploaded": 7}
     body = api.get("/api/status/downloads").json()

@@ -83,6 +83,12 @@ and `sonarr/rutracker`.
   release name or why it was dropped.
 - **Queries:** the query log — each search with the topics it found and why each was kept or
   dropped; searches without results; dropped topics (unparsed titles, other series…).
+- **Tracked:** RuTracker topics RuTrackarr follows — tracked by hand (from Search or a topic URL:
+  downloaded right away into their own qBittorrent category, e.g. `rutrackarr/tracked`, that no
+  Sonarr/Radarr client asks for) or because Sonarr/Radarr grabbed them. Tracked topics take part
+  in every Sonarr/Radarr search; a grab of one reuses the torrent that's already there. Remove
+  deletes the torrent (imported episodes stay: hardlinks) and takes unfinished releases out of
+  Sonarr's/Radarr's queue.
 - **Overrides:** per series/film (TVDB id / TMDb id): extra or replacement search titles, the
   release title, a season offset, include/exclude title filters, and topics pinned to the series
   (and a season). JSON export/import.

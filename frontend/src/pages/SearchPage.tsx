@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Copy, Download, ExternalLink, Search } from 
 import { Fragment, useMemo, useState } from "react"
 import { useSearchParams } from "react-router"
 import { toast } from "sonner"
+import { TrackButton } from "@/components/TrackButton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -187,6 +188,7 @@ export function SearchPage() {
                   <TableHead className="text-right">Size</TableHead>
                   <TableHead className="text-right">S / L</TableHead>
                   <TableHead className="text-right">Added</TableHead>
+                  <TableHead className="w-8" />
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -243,11 +245,12 @@ export function SearchPage() {
                         <TableCell className="text-muted-foreground text-right align-top whitespace-nowrap">
                           {r.added ? new Date(r.added).toLocaleDateString() : "—"}
                         </TableCell>
+                        <TableCell className="align-top">{r.section.video && <TrackButton topic={r} />}</TableCell>
                       </TableRow>
                       {expanded && (
                         <TableRow>
                           <TableCell />
-                          <TableCell colSpan={6}>
+                          <TableCell colSpan={7}>
                             <pre className="bg-muted max-h-96 overflow-auto rounded p-3 text-xs whitespace-pre-wrap">
                               {JSON.stringify(
                                 { section: r.section, language: r.language, ...r.parsed, raw: undefined },

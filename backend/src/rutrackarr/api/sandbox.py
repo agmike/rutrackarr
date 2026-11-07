@@ -41,7 +41,7 @@ async def simulate(request: Request, body: Simulate) -> dict[str, Any]:
         releases = await run(
             request.app.state.torznab_cache, req, request.app.state.resolver,
             overrides=request.app.state.overrides.get if body.overrides else None,
-            trace=trace, fresh=body.fresh,
+            trace=trace, fresh=body.fresh, tracked=request.app.state.tracker.search_rows,
         )  # fmt: skip
     except RuTrackerError as e:
         releases, error = [], str(e)

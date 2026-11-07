@@ -1,5 +1,6 @@
 """HTML parsing of RuTracker pages (login form, login state, search results)."""
 
+import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -215,3 +216,40 @@ def forums(html: str) -> list[Forum]:
                 )
                 out.append(Forum(fid, name, parent, label))
     return out
+
+
+@dataclass(frozen=True)
+class TopicInfo:
+    title: str
+    forum: str
+    forum_id: int | None
+
+
+_FORUM_LINK = re.compile(r"viewforum\.php\?f=(\d+)")
+_TITLE_SUFFIX = re.compile(r"\s*::\s*RuTracker\.org\s*$", re.I)
+
+
+def topic_info(html: str) -> TopicInfo | None:
+    """A topic page's title and section: the topic heading (or the page <title> without
+    " :: RuTracker.org"), and the last section link of the breadcrumbs."""
+    tree = HTMLParser(html)
+    heading = tree.css_first("#topic-title") or tree.css_first("h1.maintitle a")
+    title = _text(heading) if heading is not None else ""
+    if not title and (t := tree.css_first("title")) is not None:
+        title = _TITLE_SUFFIX.sub("", _text(t))
+    if not title:
+        return None
+    # Breadcrumbs: index › category › section › subsection; the last one is the topic's.
+    crumbs: list[Node] = []
+    for selector in (".t-breadcrumb-top a", ".nav a"):
+        crumbs = [
+            a for a in tree.css(selector) if _FORUM_LINK.search(a.attributes.get("href") or "")
+        ]
+        if crumbs:
+            break
+    forum, forum_id = "", None
+    if crumbs:
+        forum = _text(crumbs[-1])
+        m = _FORUM_LINK.search(crumbs[-1].attributes.get("href") or "")
+        forum_id = int(m.group(1)) if m else None
+    return TopicInfo(title, forum, forum_id)

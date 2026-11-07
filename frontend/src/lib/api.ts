@@ -326,6 +326,7 @@ export type SandboxRow = {
   season: number | null
   categories: number[]
   language: string | null
+  tracked?: boolean
 }
 export type SandboxResult = {
   took_ms: number
@@ -356,3 +357,33 @@ export type DroppedTopic = {
   last_query: string
   topic_url: string
 }
+
+export type TrackedTopic = {
+  topic_id: number
+  topic_url: string
+  title: string
+  forum: string
+  source: "manual" | "grab"
+  state: "active" | "gone"
+  content_kind: "tv" | "movie" | null
+  content_id: number | null
+  season: number | null
+  content_title: string | null
+  created_at: string
+  last_checked_at: string | null
+  last_changed_at: string | null
+  error: string | null
+  releases: string[]
+  in_queue: number
+  torrent: {
+    state: string
+    progress: number
+    size: number
+    category: string
+    dlspeed: number
+    upspeed: number
+    uploaded: number
+    ratio: number
+  } | null
+}
+export type TrackedView = { error: string | null; items: TrackedTopic[] }

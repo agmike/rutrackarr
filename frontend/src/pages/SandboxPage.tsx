@@ -207,6 +207,7 @@ function ResultCard({ title, r, form }: { title: string; r: SandboxResult; form:
                   <span className={row.kept ? "min-w-0 flex-1 font-medium break-words" : "min-w-0 flex-1 break-words text-muted-foreground"}>
                     {row.kept ? row.release : row.title}
                   </span>
+                  {row.tracked && <Badge variant="outline">tracked</Badge>}
                   {pin && (
                     <Link to={pin} className="shrink-0 text-muted-foreground hover:text-foreground" title="Pin this topic to the series (override)">
                       <Pin className="size-3.5" />

@@ -107,6 +107,25 @@ const qbittorrent: FieldSpec[] = [
   },
 ]
 
+const tracking: FieldSpec[] = [
+  {
+    key: "tracking.auto_track",
+    label: "Track what Sonarr/Radarr grab",
+    type: "select",
+    options: [
+      { value: "on", label: "On — follow updates of every grabbed topic" },
+      { value: "off", label: "Off — only topics tracked by hand" },
+    ],
+  },
+  {
+    key: "tracking.category",
+    label: "qBittorrent category for topics tracked by hand",
+    type: "text",
+    placeholder: "rutrackarr/tracked",
+    help: "Create it in qBittorrent/qui (with a save path) — RuTrackarr can't through qui's proxy. Use one no Sonarr/Radarr download client asks for: not a parent or child of their categories.",
+  },
+]
+
 const alerts: FieldSpec[] = [
   {
     key: "alerts.apprise_urls",
@@ -198,6 +217,9 @@ export function SettingsPage() {
             </div>
           )}
         </SettingsSection>
+      </section>
+      <section id="tracking">
+        <SettingsSection title="Tracked topics" fields={tracking} view={data} />
       </section>
       <section id="alerts">
         <SettingsSection title="Alerts" description="Notifications through Apprise." fields={alerts} view={data}>
