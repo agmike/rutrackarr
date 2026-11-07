@@ -24,7 +24,9 @@ here=$(dirname "$(readlink -f "$0")")
 RUTRACKARR_URL="${RUTRACKARR_URL:-}"
 RUTRACKARR_API_KEY="${RUTRACKARR_API_KEY:-}"
 
-log() { echo "rutrackarr-companions: $*" >&2; }
+# Sonarr logs a script's stdout as info and its stderr as errors.
+log() { echo "rutrackarr-companions: $*"; }
+warn() { echo "rutrackarr-companions: $*" >&2; }
 
 # Sonarr's variable names, in either case.
 var() {
@@ -71,7 +73,7 @@ link() {
 		if [ "$path" = "#video" ]; then
 			root="${src%"$suffix"}" # the torrent's folder: source path minus the video's path in it
 			if [ "$root" = "$src" ]; then
-				log "source $src doesn't end with $suffix — skipped"
+				warn "source $src doesn't end with $suffix — skipped"
 				return 0
 			fi
 			continue
@@ -80,7 +82,7 @@ link() {
 		from="$root$path"
 		to="${dst%.*}.$suffix"
 		if [ ! -f "$from" ]; then
-			log "missing $from"
+			warn "missing $from"
 			continue
 		fi
 		if ln -f "$from" "$to" 2>/dev/null || cp -f "$from" "$to"; then
@@ -122,7 +124,7 @@ case "$(var sonarr_eventtype Sonarr_EventType)" in
 Test)
 	: "${RUTRACKARR_URL:?RUTRACKARR_URL is not set}" "${RUTRACKARR_API_KEY:?RUTRACKARR_API_KEY is not set}"
 	curl -fsS --max-time 10 "${RUTRACKARR_URL%/}/torznab/api?t=caps" >/dev/null || {
-		log "RuTrackarr not reachable at $RUTRACKARR_URL"
+		warn "RuTrackarr not reachable at $RUTRACKARR_URL"
 		exit 1
 	}
 	;;
