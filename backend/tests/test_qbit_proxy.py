@@ -29,6 +29,7 @@ class FakeQbit:
         self.files: dict[str, list[str]] = {}
         self.added: list[dict] = []
         self.calls: list[str] = []
+        self.modern_login = True  # qBittorrent 5.2+: 204 on success
 
     def install(self, net) -> None:  # noqa: F811
         for path in (
@@ -43,7 +44,7 @@ class FakeQbit:
         path = request.url.path.removeprefix("/api/v2/")
         self.calls.append(path)
         if path == "auth/login":
-            r = httpx.Response(200, text="Ok.")
+            r = httpx.Response(204) if self.modern_login else httpx.Response(200, text="Ok.")
             r.headers["set-cookie"] = "SID=upstream; HttpOnly; path=/"
             return r
         if "SID=upstream" not in request.headers.get("cookie", ""):
@@ -309,3 +310,9 @@ def test_other_torrents_pass_through(api, net, qbit):  # noqa: F811
         json.loads(api.get("/qbit/api/v2/torrents/properties", params={"hash": h}).text)["hash"]
         == h
     )
+
+
+def test_old_qbittorrent_login(api, qbit):  # noqa: F811
+    qbit.modern_login = False  # qBittorrent < 5.2: 200 "Ok."
+    login(api)
+    assert api.get("/qbit/api/v2/app/webapiVersion").text == "2.11.4"

@@ -80,7 +80,7 @@ def test_qbittorrent_unsaved_values_and_login(tmp_path):
         if req.url.path == "/api/v2/auth/login":
             seen["login"] = (str(req.url), req.content.decode())
             ok = b"password=pw" in req.content
-            r = httpx.Response(200, text="Ok." if ok else "Fails.")
+            r = httpx.Response(204) if ok else httpx.Response(401)  # qBittorrent 5.2
             if ok:
                 r.headers["set-cookie"] = "SID=s1; path=/"
             return r

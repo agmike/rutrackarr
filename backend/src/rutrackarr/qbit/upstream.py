@@ -44,7 +44,8 @@ class Qbit:
                 )
             except httpx.HTTPError as e:
                 raise QbitError(f"qBittorrent unreachable: {e}") from e
-        if r.status_code != 200 or r.text.strip() not in ("Ok.", ""):
+        # qBittorrent < 5.2: 200 "Ok." / 200 "Fails."; 5.2+: 204 / 401.
+        if r.status_code not in (200, 204) or r.text.strip() not in ("Ok.", ""):
             raise QbitError(f"qBittorrent login failed (HTTP {r.status_code})")
         self._cookies = r.cookies
 

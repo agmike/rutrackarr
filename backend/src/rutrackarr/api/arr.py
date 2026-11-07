@@ -40,9 +40,10 @@ async def test_qbittorrent(request: Request, body: QbitTest | None = None) -> di
                 f"{url}/api/v2/auth/login",
                 data={"username": user or "", "password": password or ""},
             )
-            if r.status_code == 200 and r.text.strip() == "Fails.":
+            # qBittorrent < 5.2: 200 "Ok." / 200 "Fails."; 5.2+: 204 / 401.
+            if r.text.strip() == "Fails." or r.status_code in (401, 403):
                 raise HTTPException(status_code=502, detail="qBittorrent rejected the login")
-            if r.status_code != 200:
+            if r.status_code not in (200, 204):
                 raise HTTPException(
                     status_code=502, detail=f"qBittorrent answered HTTP {r.status_code}"
                 )
