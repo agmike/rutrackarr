@@ -1,23 +1,24 @@
 #!/bin/bash
-# RuTrackarr companion tracks — a Sonarr custom script (Settings → Connect → Custom Script).
+# RuTrackarr companion tracks — a Sonarr or Radarr custom script (Settings → Connect → Custom
+# Script).
 #
 # RuTracker releases often carry external audio and subtitles in their own folders
-# ("RUS Sound [Team]/…", "RUS Subs [Team]/…"); Sonarr doesn't import them. This script:
+# ("RUS Sound [Team]/…", "RUS Subs [Team]/…"); Sonarr/Radarr don't import them. This script:
 #   On File Import / Upgrade:  asks RuTrackarr which files of the torrent belong to the
-#                              imported episode and hardlinks them next to it as
-#                              <episode>.<lang>.<title>.<flags>.<ext> (Jellyfin/Plex/Kodi
+#                              imported episode/film and hardlinks them next to it as
+#                              <file>.<lang>.<title>.<flags>.<ext> (Jellyfin/Plex/Kodi
 #                              naming, e.g. "….ru.StudioBand.mka", "….ru.Team signs.forced.ass")
 #                              and, with RUTRACKARR_FONTS_DIR set, links the torrent's fonts
 #                              (for ASS subtitles) into that shared folder as
 #                              <name>.<content hash>.<ext> — Jellyfin's "fallback fonts" folder
-#   On Rename:                 moves them along with the episode
-#   On Episode File Delete:    removes them (incl. when an upgrade replaces the episode)
+#   On Rename:                 moves them along with the file
+#   On Episode/Movie File Delete: removes them (incl. when an upgrade replaces the file)
 #
 # Downloads that didn't come from RuTrackarr are left alone. Needs bash and curl (both in the
-# linuxserver Sonarr image). Settings, from the environment or rutrackarr-companions.env
+# linuxserver Sonarr/Radarr images). Settings, from the environment or rutrackarr-companions.env
 # next to this script:
 #   RUTRACKARR_URL      e.g. http://rutrackarr:8787/rutrackarr
-#   RUTRACKARR_API_KEY  the Torznab API key
+#   RUTRACKARR_API_KEY  RuTrackarr's API key
 #   RUTRACKARR_FONTS_DIR  optional: shared font folder (e.g. /data/media/.fonts); fonts are never
 #                         removed from it (several episodes and torrents share them)
 set -uo pipefail
@@ -34,7 +35,7 @@ RUTRACKARR_FONTS_DIR="${RUTRACKARR_FONTS_DIR:-}"
 log() { echo "rutrackarr-companions: $*"; }
 warn() { echo "rutrackarr-companions: $*" >&2; }
 
-# Sonarr's variable names, in either case.
+# Sonarr's and Radarr's variable names, in either case.
 var() {
 	local n v
 	for n in "$@"; do
@@ -81,9 +82,10 @@ font() {
 
 link() {
 	local src dst id plan path suffix root="" from to
-	src=$(var sonarr_episodefile_sourcepath Sonarr_EpisodeFile_SourcePath)
-	dst=$(var sonarr_episodefile_path Sonarr_EpisodeFile_Path)
-	id=$(var sonarr_download_id Sonarr_Download_Id)
+	src=$(var sonarr_episodefile_sourcepath Sonarr_EpisodeFile_SourcePath \
+		radarr_moviefile_sourcepath Radarr_MovieFile_SourcePath)
+	dst=$(var sonarr_episodefile_path Sonarr_EpisodeFile_Path radarr_moviefile_path Radarr_MovieFile_Path)
+	id=$(var sonarr_download_id Sonarr_Download_Id radarr_download_id Radarr_Download_Id)
 	[ -n "$src" ] && [ -n "$dst" ] && [ -n "$id" ] && [ -n "$RUTRACKARR_URL" ] || return 0
 	if ! plan=$(curl -fsS --max-time 30 -G "${RUTRACKARR_URL%/}/torznab/companions" \
 		--data-urlencode "hash=$id" --data-urlencode "source=$src" \
@@ -121,8 +123,10 @@ link() {
 rename() {
 	local -a prev new
 	local i old nw f
-	IFS='|' read -r -a prev <<<"$(var sonarr_episodefile_previouspaths Sonarr_EpisodeFile_PreviousPaths)"
-	IFS='|' read -r -a new <<<"$(var sonarr_episodefile_paths Sonarr_EpisodeFile_Paths)"
+	IFS='|' read -r -a prev <<<"$(var sonarr_episodefile_previouspaths Sonarr_EpisodeFile_PreviousPaths \
+		radarr_moviefile_previouspaths Radarr_MovieFile_PreviousPaths)"
+	IFS='|' read -r -a new <<<"$(var sonarr_episodefile_paths Sonarr_EpisodeFile_Paths \
+		radarr_moviefile_paths Radarr_MovieFile_Paths)"
 	for i in "${!prev[@]}"; do
 		old="${prev[$i]}"
 		nw="${new[$i]:-}"
@@ -136,7 +140,7 @@ rename() {
 
 remove() {
 	local p f
-	p=$(var sonarr_episodefile_path Sonarr_EpisodeFile_Path)
+	p=$(var sonarr_episodefile_path Sonarr_EpisodeFile_Path radarr_moviefile_path Radarr_MovieFile_Path)
 	[ -n "$p" ] || return 0
 	# An upgrade that kept the same name: the new episode is already there and gets its own
 	# companions linked on import — don't remove them.
@@ -147,7 +151,7 @@ remove() {
 	done < <(companions_of "$p")
 }
 
-case "$(var sonarr_eventtype Sonarr_EventType)" in
+case "$(var sonarr_eventtype Sonarr_EventType radarr_eventtype Radarr_EventType)" in
 Test)
 	: "${RUTRACKARR_URL:?RUTRACKARR_URL is not set}" "${RUTRACKARR_API_KEY:?RUTRACKARR_API_KEY is not set}"
 	curl -fsS --max-time 10 "${RUTRACKARR_URL%/}/torznab/api?t=caps" >/dev/null || {
@@ -157,6 +161,6 @@ Test)
 	;;
 Download) link ;;
 Rename) rename ;;
-EpisodeFileDelete) remove ;;
+EpisodeFileDelete | MovieFileDelete) remove ;;
 esac
 exit 0

@@ -48,10 +48,10 @@ browser fetch that page instead (and keeps doing so for a while). Note: through 
 the login form is submitted as UTF-8, so a RuTracker username or password with non-Latin
 characters may not work while requests go through FlareSolverr.
 
-### Companion tracks and fonts (Sonarr custom script)
+### Companion tracks and fonts (Sonarr/Radarr custom script)
 
-`contrib/sonarr/rutrackarr-companions.sh` links a torrent's external audio and subtitles next to
-each imported episode under Jellyfin/Plex/Kodi names. With `RUTRACKARR_FONTS_DIR` set it also
+`contrib/sonarr/rutrackarr-companions.sh` (works in both Sonarr and Radarr) links a torrent's
+external audio and subtitles next to each imported episode or film under Jellyfin/Plex/Kodi names. With `RUTRACKARR_FONTS_DIR` set it also
 links the torrent's fonts into one shared folder (named by content, so nothing collides). Point
 Jellyfin's *fallback fonts* (Dashboard → Playback → Transcoding) at it so the web player renders
 ASS subtitles in their intended fonts. Note that the web player loads every font in that folder
