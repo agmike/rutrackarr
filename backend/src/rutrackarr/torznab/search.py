@@ -109,6 +109,12 @@ class SearchCache:
             except (ValueError, TypeError, OSError) as e:
                 log.warning("section catalogue unreadable: %s", e)
 
+    def catalogue_info(self) -> tuple[float | None, int]:
+        """(updated at, as a timestamp; video sections known)."""
+        if self.catalogue is None:
+            return None, 0
+        return (self._catalogue_at or None), len(self.catalogue.video_ids())
+
     def _update_catalogue(self) -> None:
         """Rebuild the section catalogue from the last search page, at most once a week."""
         forums = self._client.last_forums

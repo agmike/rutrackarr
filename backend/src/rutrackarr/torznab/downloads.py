@@ -23,6 +23,8 @@ class Download:
     real_hash: str | None = None  # added through the proxy: the real torrent
     category: str | None = None
     added: bool = False
+    created_at: datetime | None = None  # served
+    added_at: datetime | None = None  # added through the proxy
 
 
 class DownloadStore:
@@ -65,6 +67,12 @@ class DownloadStore:
             rows = s.scalars(select(DownloadRow).where(DownloadRow.added_at.is_not(None)))
             return [_download(r) for r in rows]
 
+    def recent(self, limit: int = 10) -> list[Download]:
+        """The torrents served most recently."""
+        with self._sessions() as s:
+            q = select(DownloadRow).order_by(DownloadRow.created_at.desc()).limit(limit)
+            return [_download(r) for r in s.scalars(q)]
+
     def set_category(self, info_hash: str, category: str) -> None:
         with self._sessions.begin() as s:
             row = s.get(DownloadRow, info_hash.strip().upper())
@@ -90,4 +98,10 @@ def _download(row: DownloadRow) -> Download:
         row.info_hash, row.topic_id, row.title, row.forum, row.name, files,
         release=row.release, real_hash=row.real_hash, category=row.category,
         added=row.added_at is not None,
+        created_at=_utc(row.created_at), added_at=_utc(row.added_at),
     )  # fmt: skip
+
+
+def _utc(dt: datetime | None) -> datetime | None:
+    """SQLite drops the time zone; the stored times are UTC."""
+    return dt.replace(tzinfo=UTC) if dt is not None and dt.tzinfo is None else dt

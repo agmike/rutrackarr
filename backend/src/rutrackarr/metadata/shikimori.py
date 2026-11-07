@@ -50,6 +50,10 @@ class Shikimori:
         self._cache, self._transport, self._ua, self._base = cache, transport, user_agent, base_url
         self._spacing, self._lock, self._last = spacing, asyncio.Lock(), 0.0
 
+    async def check(self) -> bool:
+        """Whether Shikimori answers (one request, through the usual spacing)."""
+        return await self._fetch("/api/animes/1") is not False
+
     async def anime(self, mal_id: int) -> AnimeNames | None:
         key = f"shikimori:anime:{mal_id}"
         found, d = self._cache.get(key, TTL)

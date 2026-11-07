@@ -2,6 +2,9 @@ import { useQuery } from "@tanstack/react-query"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { useRuTrackerSession } from "@/components/RuTrackerSessionPanel"
+import { ConnectionsCard } from "@/components/ConnectionsCard"
+import { DownloadsCard } from "@/components/DownloadsCard"
+import { RecentGrabsCard } from "@/components/RecentGrabsCard"
 import { SetupChecklist } from "@/components/SetupChecklist"
 import { api, formatWhen, type SettingsView, type SystemStatus } from "@/lib/api"
 
@@ -10,7 +13,7 @@ export function StatusPage() {
   const settings = useQuery({ queryKey: ["settings"], queryFn: () => api.get<SettingsView>("settings") })
   const session = useRuTrackerSession().data
   return (
-    <div className="grid max-w-3xl gap-4 md:grid-cols-2">
+    <div className="grid max-w-4xl gap-4 md:grid-cols-2">
       <Card>
         <CardHeader>
           <CardTitle>Service</CardTitle>
@@ -46,6 +49,9 @@ export function StatusPage() {
         </CardContent>
       </Card>
       {settings.data && <SetupChecklist settings={settings.data} />}
+      <DownloadsCard />
+      <ConnectionsCard />
+      <RecentGrabsCard />
     </div>
   )
 }

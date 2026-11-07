@@ -55,6 +55,22 @@ class Tmdb:
     def configured(self) -> bool:
         return bool(self._token())
 
+    async def check(self) -> str | None:
+        """None when the token works, else what's wrong."""
+        token = self._token()
+        if not token:
+            return "no token"
+        try:
+            async with httpx.AsyncClient(
+                timeout=10, transport=self._transport, headers={"Authorization": f"Bearer {token}"}
+            ) as c:
+                r = await c.get(API + "/authentication")
+        except httpx.HTTPError as e:
+            return f"unreachable: {e}"
+        if r.status_code == 401:
+            return "token rejected"
+        return None if r.status_code == 200 else f"HTTP {r.status_code}"
+
     async def tv_by_tvdb(self, tvdb_id: int) -> TmdbTitle | None:
         found = await self._get(
             f"find:tvdb:{tvdb_id}", f"/find/{tvdb_id}", {"external_source": "tvdb_id"}

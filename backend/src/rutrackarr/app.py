@@ -9,6 +9,7 @@ from rutrackarr import __version__
 from rutrackarr.api import arr as arr_api
 from rutrackarr.api import rutracker as rutracker_api
 from rutrackarr.api import settings as settings_api
+from rutrackarr.api import status as status_api
 from rutrackarr.api import system
 from rutrackarr.api import torznab as torznab_api
 from rutrackarr.config import BootstrapSettings
@@ -78,11 +79,16 @@ def create_app(
         transport,
     )
     ua = f"RuTrackarr/{__version__} (+https://github.com/agmike/rutrackarr)"
+    app.state.animelist = AnimeList(settings.data_dir / "anime-list.json", transport, user_agent=ua)
+    app.state.shikimori = Shikimori(MetadataCache(sessions), transport, user_agent=ua)
+    app.state.tmdb = Tmdb(
+        lambda: svc.get("tmdb.read_access_token"), MetadataCache(sessions), transport
+    )
     app.state.resolver = Resolver(
-        AnimeList(settings.data_dir / "anime-list.json", transport, user_agent=ua),
-        Shikimori(MetadataCache(sessions), transport, user_agent=ua),
+        app.state.animelist,
+        app.state.shikimori,
         SonarrTitles(lambda: svc.get("sonarr.url"), lambda: svc.get("sonarr.api_key"), transport),
-        Tmdb(lambda: svc.get("tmdb.read_access_token"), MetadataCache(sessions), transport),
+        app.state.tmdb,
         RadarrTitles(lambda: svc.get("radarr.url"), lambda: svc.get("radarr.api_key"), transport),
     )
     app.state.torznab_cache = SearchCache(
@@ -98,6 +104,7 @@ def create_app(
     app.include_router(settings_api.router, prefix=f"{base}/api")
     app.include_router(rutracker_api.router, prefix=f"{base}/api")
     app.include_router(arr_api.router, prefix=f"{base}/api")
+    app.include_router(status_api.router, prefix=f"{base}/api")
 
     # Built SPA: static assets + index.html fallback for client-side routes.
     # The build uses relative asset URLs; <base href> carries the URL base.

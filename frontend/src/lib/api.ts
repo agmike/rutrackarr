@@ -155,3 +155,73 @@ export function formatWhen(iso: string | null): string {
   if (!iso) return "—"
   return new Date(iso).toLocaleString()
 }
+
+export type ConnectionState = "ok" | "warn" | "error" | "off"
+export type Connection = {
+  id: string
+  name: string
+  state: ConnectionState
+  detail: string
+  version: string | null
+  checks: { label: string; ok: boolean }[]
+}
+export type ConnectionsView = { checked_at: string; items: Connection[] }
+
+export type DownloadStatus = "downloading" | "stalled" | "queued" | "stopped" | "error" | "seeding" | "missing" | "unknown"
+export type DownloadItem = {
+  hash: string
+  release: string
+  category: string
+  topic_id: number
+  topic_url: string | null
+  added_at: string | null
+  status: DownloadStatus
+  state: string | null
+  progress: number | null
+  size: number | null
+  dlspeed: number | null
+  upspeed: number | null
+  eta: number | null
+  ratio: number | null
+}
+export type DownloadsView = { configured: boolean; error?: string | null; items: DownloadItem[] }
+
+export type Grab = {
+  hash: string
+  release: string
+  topic_id: number
+  topic_url: string | null
+  served_at: string | null
+  via_proxy: boolean
+  category: string | null
+}
+export type GrabsView = { items: Grab[] }
+
+export function formatBytes(n: number | null | undefined): string {
+  if (n == null) return "—"
+  const units = ["B", "KB", "MB", "GB", "TB"]
+  let i = 0
+  let v = n
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024
+    i++
+  }
+  return `${v.toFixed(v >= 10 || i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+export function formatDuration(seconds: number | null | undefined): string {
+  if (seconds == null || seconds < 0 || seconds >= 8640000) return "∞"
+  if (seconds < 60) return `${Math.round(seconds)} s`
+  if (seconds < 3600) return `${Math.round(seconds / 60)} min`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ${Math.round((seconds % 3600) / 60)} min`
+  return `${Math.floor(seconds / 86400)} d ${Math.round((seconds % 86400) / 3600)} h`
+}
+
+export function formatAgo(iso: string | null): string {
+  if (!iso) return "—"
+  const s = (Date.now() - new Date(iso).getTime()) / 1000
+  if (s < 60) return "just now"
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`
+  return `${Math.floor(s / 86400)} d ago`
+}

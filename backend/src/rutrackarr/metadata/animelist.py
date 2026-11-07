@@ -65,6 +65,11 @@ class AnimeList:
         self._by_imdb: dict[str, list[AnimeEntry]] = {}
         self._by_mal: dict[int, AnimeEntry] = {}
 
+    def info(self) -> tuple[float | None, int]:
+        """(downloaded at, as a timestamp; entries loaded)."""
+        mtime = self._path.stat().st_mtime if self._path.exists() else None
+        return mtime, len(self._by_mal)
+
     async def ensure(self) -> None:
         """Load the list; download it when missing or older than a day. Failures keep the
         previous copy (or none) — lookups then just find nothing."""
