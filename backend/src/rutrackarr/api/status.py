@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, Request
 
-from rutrackarr import __version__
+from rutrackarr import REPOSITORY, __commit__, __version__
 from rutrackarr.qbit.proxy import forget_gone
 from rutrackarr.qbit.upstream import QbitError
 
@@ -214,6 +214,8 @@ def service(request: Request) -> dict[str, Any]:
     activity = request.app.state.activity
     return {
         "version": __version__,
+        "commit": __commit__,
+        "repository": REPOSITORY,
         "started_at": started.isoformat(),
         "uptime_seconds": round((datetime.now(UTC) - started).total_seconds()),
         "rutracker": request.app.state.spacer.stats(),

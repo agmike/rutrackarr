@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from rutrackarr import __version__
+from rutrackarr import REPOSITORY, __commit__, __version__
 
 router = APIRouter(tags=["system"])
 
@@ -13,5 +13,10 @@ async def health() -> dict[str, str]:
 
 
 @router.get("/system/status")
-async def status() -> dict[str, str]:
-    return {"app": "RuTrackarr", "version": __version__}
+async def status() -> dict[str, str | None]:
+    return {
+        "app": "RuTrackarr",
+        "version": __version__,
+        "commit": __commit__,
+        "repository": REPOSITORY,
+    }

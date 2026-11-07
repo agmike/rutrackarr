@@ -16,7 +16,7 @@ export function ApiKeyCard() {
     mutationFn: () => api.post<ApiKeyView>("settings/api-key/regenerate"),
     onSuccess: (next) => {
       qc.setQueryData(["api-key"], next)
-      toast.success("New API key generated — update it in Sonarr and Radarr")
+      toast.success("New API key generated — update the indexer and the download client in Sonarr and Radarr")
     },
     onError: (e) => toast.error(`Could not regenerate: ${e.message}`),
   })
@@ -29,12 +29,14 @@ export function ApiKeyCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          Torznab API key {data?.pinned && <Badge variant="secondary">set by environment</Badge>}
+          API key {data?.pinned && <Badge variant="secondary">set by environment</Badge>}
         </CardTitle>
         <CardDescription className="grid gap-1">
           <span>
-            Sonarr and Radarr use this key. Add RuTrackarr there as a <b>Torznab</b> indexer: URL{" "}
-            <code>{new URL("torznab", document.baseURI).href}</code>, API Path <code>/api</code>.
+            Sonarr and Radarr use this one key in two places: the RuTrackarr <b>Torznab</b> indexer (URL{" "}
+            <code>{new URL("torznab", document.baseURI).href}</code>, API Path <code>/api</code>), and the RuTrackarr{" "}
+            <b>qBittorrent</b> download client (URL base <code>{new URL("qbit", document.baseURI).pathname}</code>, key in its
+            API key field, username empty). The companion tracks script uses it too.
           </span>
           <span>
             Use the address Sonarr/Radarr reach RuTrackarr on directly (e.g.{" "}
@@ -56,7 +58,12 @@ export function ApiKeyCard() {
             variant="outline"
             disabled={regen.isPending}
             onClick={() => {
-              if (confirm("Generate a new API key? Sonarr and Radarr will stop working until you update it there.")) regen.mutate()
+              if (
+                confirm(
+                  "Generate a new API key? Sonarr and Radarr will stop working with RuTrackarr until you update it there — in the indexer and in the download client (and the companion tracks script).",
+                )
+              )
+                regen.mutate()
             }}
           >
             <RefreshCw /> Regenerate

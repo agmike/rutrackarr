@@ -23,7 +23,17 @@ export function ServiceCard() {
           {s && (
             <>
               <Badge>online</Badge>
-              <span className="text-muted-foreground">version {s.version}</span>
+              <span className="text-muted-foreground">
+                version {s.version}
+                {s.commit && (
+                  <>
+                    {" · "}
+                    <a href={`${s.repository}/commit/${s.commit}`} target="_blank" rel="noreferrer" className="font-mono underline-offset-2 hover:underline" title={s.commit}>
+                      {s.commit.slice(0, 7)}
+                    </a>
+                  </>
+                )}
+              </span>
               <span className="text-muted-foreground" title={`since ${formatWhen(s.started_at)}`}>
                 · up {formatDuration(s.uptime_seconds)}
               </span>

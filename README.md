@@ -1,7 +1,8 @@
 # RuTrackarr
 
-A Torznab indexer for [RuTracker](https://rutracker.org) built for Sonarr and Radarr,
-with language-aware release ranking.
+A Torznab indexer for [RuTracker](https://rutracker.org) built for Sonarr and Radarr, with
+language-aware release ranking — plus a qBittorrent-compatible download client that makes RuTracker
+releases import like any other, and tracked topics that follow RuTracker's updating releases.
 
 > [!WARNING]
 > **Early development — not ready for use.**
@@ -24,15 +25,21 @@ languages for audio languages. RuTrackarr instead works from the raw RuTracker t
 - parses each release into audio tracks (dub / multi-voice / single-voice, studio), original
   track, **subtitle languages**, episode range and quality;
 - ranks releases against your **language preferences** and hands Sonarr/Radarr titles
-  with tokens they can't misread;
-- has a web UI for settings, overrides, a query log and test searches.
+  with tokens they can't misread (scored by the custom formats in `docs/`);
+- as a **download client** in front of qBittorrent, tags the downloaded files so Sonarr scores an
+  import like the grab, and keeps RuTracker's one-torrent-per-topic model working with Sonarr's
+  per-episode grabs;
+- **tracks topics**: RuTracker updates a topic (new episodes) by replacing its torrent; RuTrackarr
+  applies the new one in place, so only new files download;
+- has a web UI for settings, a status page, searches (raw, or simulated as Sonarr/Radarr), the
+  query log, tracked topics and overrides, with alerts through Apprise.
 
 ## Running
 
 Container image: `ghcr.io/agmike/rutrackarr` (runs as a non-root user; mount a volume at `/data`).
 Configuration is done in the web UI (default port `8787`). Optional environment variables:
 `RUTRACKARR_URL_BASE` (e.g. `/rutrackarr` behind a reverse proxy), `RUTRACKARR_SECRET_KEY`,
-`RUTRACKARR_API_KEY`.
+`RUTRACKARR_API_KEY` (pins the API key, e.g. from a secret store).
 
 You need your own RuTracker account; please respect the tracker's rules and keep request
 rates low. A [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) instance is used
@@ -56,11 +63,14 @@ Sonarr scores a grab by its release title but an import by the file names, and R
 names say nothing about the voice-over or subtitles — so a release that won the search can
 score low, or be rejected, on import. RuTrackarr can stand in front of your qBittorrent:
 
-1. In RuTrackarr → Settings → *Download client*, enter the qBittorrent Web UI URL and login.
+1. In RuTrackarr → Settings → *Download client*, connect it to qBittorrent: either its Web UI
+   (URL + login) or a [qui](https://github.com/autobrr/qui) client proxy (qui URL + the proxy
+   token, kept secret).
 2. In Sonarr/Radarr add a **qBittorrent** download client: host and port of RuTrackarr, URL
-   base `<RuTrackarr URL base>/qbit` (e.g. `/rutrackarr/qbit`), any username, the RuTrackarr
-   **API key as password**, and a category of its own (e.g. `sonarr-rutracker`; give it the
-   same save path as your usual category in qBittorrent).
+   base `<RuTrackarr URL base>/qbit` (e.g. `/rutrackarr/qbit`), the RuTrackarr **API key** in
+   its *API key* field (username empty), and a category of its own (e.g. `sonarr/rutracker`,
+   with the save path of your usual category). Optionally a post-import category
+   (`sonarr/completed`).
 3. Edit the RuTrackarr indexer and select that download client.
 
 Torrents grabbed from RuTrackarr then go through it: the topic is added to qBittorrent
@@ -74,10 +84,22 @@ Use categories that don't contain each other: in qBittorrent 5.2 a category also
 subcategories, so e.g. `sonarr/default`, `sonarr/rutracker`, `sonarr/completed` — not `sonarr`
 and `sonarr/rutracker`.
 
+### Custom formats
+
+Release names carry tokens for Sonarr/Radarr custom formats (importable into
+[Clonarr](https://github.com/prophetse7en/clonarr) or the apps directly):
+`docs/arr-custom-formats.json` — language tiers `RTA-T1` (original + subtitles) … `RTA-T9`
+(languages not stated), Russian voice types, and `RTA-QC` (QC subsections, give it a small
+negative score); `docs/arr-custom-formats-ru-first.json` — for Russian-voice-first profiles;
+`docs/arr-custom-formats-language.json` — a language block for profiles that accept original,
+Russian or English audio.
+The token format is described in `docs/title-format.md`.
+
 ### Web UI
 
-- **Status:** connections (incl. whether Sonarr/Radarr are set up to use RuTrackarr), downloads,
-  recent grabs, activity, query stats and the RuTracker request budget.
+- **Status:** service (version, uptime, query stats, RuTracker request budget), RuTracker session,
+  downloads, tracked topics, recent grabs, activity, queries, and connections (incl. whether
+  Sonarr/Radarr are set up to use RuTrackarr).
 - **Search**, two modes — *RuTracker*: a plain search, every result parsed and ranked (and
   trackable); *As Sonarr/Radarr*: run the exact search Sonarr/Radarr would send for a series or film from their
   libraries (season/episode), with or without overrides, and see every RuTracker topic with its
@@ -104,16 +126,22 @@ and `sonarr/rutracker`.
 **RuTrackarr has no built-in login.** Anyone who can reach its web UI can read and change
 its settings (stored secrets are never shown, but they can be replaced). Do not expose it
 directly to the internet: keep it on a private network, or put it behind a reverse proxy
-that does authentication (for example an SSO/forward-auth proxy). The Torznab endpoint used
-by Sonarr/Radarr is protected by its API key.
+that does authentication (for example an SSO/forward-auth proxy). The Torznab endpoint and the
+download client API used by Sonarr/Radarr are protected by the API key.
 
-Secrets (RuTracker password, API keys, TMDb token) are encrypted at rest with a key from
-`RUTRACKARR_SECRET_KEY`, or — when that is unset — a key generated into `/data/secret.key`.
+Secrets (RuTracker password, API keys, TMDb token, the qBittorrent password or qui proxy token,
+Apprise URLs) are encrypted at rest with a key from `RUTRACKARR_SECRET_KEY`, or — when that is
+unset — a key generated into `/data/secret.key`. RuTrackarr never stores `.torrent` files (they
+carry your passkey); it keeps only their info hash and file list.
 
 ## Development
 
-- `backend/` — Python 3.13, FastAPI (`uv sync`, `uv run pytest`, `uv run ruff check .`)
-- `frontend/` — React + Vite + Tailwind + shadcn/ui (`npm ci`, `npm run dev`, `npm run build`)
+- `backend/` — Python 3.13, FastAPI, SQLite + Alembic (`uv sync`, `uv run pytest`,
+  `uv run ruff check .`, `uv run ruff format .`)
+- `frontend/` — React + Vite + Tailwind + shadcn/ui (`npm ci`, `npm run dev`, `npm run build`,
+  `npx oxlint`)
+- Releases: pushing a `vX.Y.Z` tag builds `ghcr.io/agmike/rutrackarr:X.Y.Z` (version and commit
+  shown in the UI); `main` builds `:edge`.
 
 ## License
 

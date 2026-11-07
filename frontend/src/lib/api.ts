@@ -37,7 +37,7 @@ export function fieldErrors(err: unknown): Record<string, string> {
   return {}
 }
 
-export type SystemStatus = { app: string; version: string }
+export type SystemStatus = { app: string; version: string; commit: string | null; repository: string }
 
 export type SettingsView = {
   values: Record<string, string | number>
@@ -215,6 +215,8 @@ export type QueryStats = {
 }
 export type ServiceView = {
   version: string
+  commit: string | null
+  repository: string
   started_at: string
   uptime_seconds: number
   rutracker: { per_minute: number; last_minute: number; waiting: number; wait_seconds: number }

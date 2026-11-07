@@ -1,9 +1,11 @@
 import { Activity, BookmarkCheck, ListTree, Search, Settings, SlidersHorizontal } from "lucide-react"
 import { useEffect } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
+import { useQuery } from "@tanstack/react-query"
 import { Toaster } from "sonner"
 import { AlertBanner } from "@/components/AlertBanner"
 import { Separator } from "@/components/ui/separator"
+import { api, type SystemStatus } from "@/lib/api"
 import { cn } from "@/lib/utils"
 
 const nav = [
@@ -17,6 +19,7 @@ const nav = [
 
 export default function App() {
   const { pathname, hash } = useLocation()
+  const system = useQuery({ queryKey: ["system-status"], queryFn: () => api.get<SystemStatus>("system/status"), staleTime: 300_000 }).data
   const title = nav.find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to)))?.label ?? ""
   // Scroll to #section links (e.g. from the status page) once the page has rendered.
   useEffect(() => {
@@ -45,6 +48,18 @@ export default function App() {
             </NavLink>
           ))}
         </nav>
+        <div className="mt-auto px-2 pt-3 text-xs text-muted-foreground">
+          {system && (
+            <>
+              v{system.version}
+              {system.commit && <span className="font-mono"> · {system.commit.slice(0, 7)}</span>}
+              {" · "}
+            </>
+          )}
+          <a href={system?.repository ?? "https://github.com/agmike/rutrackarr"} target="_blank" rel="noreferrer" className="underline-offset-2 hover:underline">
+            source
+          </a>
+        </div>
       </aside>
       <main className="flex-1 p-6">
         <h1 className="mb-4 text-2xl font-semibold tracking-tight">{title}</h1>
