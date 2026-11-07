@@ -17,7 +17,7 @@ export function QueriesCard() {
   const service = useQuery({ queryKey: ["status-service"], queryFn: () => api.get<ServiceView>("status/service"), refetchInterval: 10_000 })
   const q = useQuery({
     queryKey: ["status-queries", errorsOnly],
-    queryFn: () => api.get<QueriesView>(`status/queries?limit=25${errorsOnly ? "&errors=true" : ""}`),
+    queryFn: () => api.get<QueriesView>(`status/queries?limit=8${errorsOnly ? "&errors=true" : ""}`),
     refetchInterval: 15_000,
   })
   const day = service.data?.queries_24h
