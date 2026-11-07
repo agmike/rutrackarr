@@ -109,7 +109,7 @@ class RuTrackerClient:
 
     def _logged_in(self, user: str) -> LoginResult:
         now = datetime.now(UTC)
-        self._store.update(username=user, logged_in_at=now, last_ok_at=now, last_error=None)
+        self._store.mark_ok(username=user, logged_in_at=now)
         return LoginResult("ok", username=user)
 
     async def check(self) -> str | None:
@@ -118,7 +118,7 @@ class RuTrackerClient:
         kind = parse.classify(page.text)
         if kind is PageKind.LOGGED_IN:
             user = parse.logged_in_user(page.text)
-            self._store.update(username=user, last_ok_at=datetime.now(UTC))
+            self._store.mark_ok(username=user)
             return user
         if kind is PageKind.LOGIN_FORM:
             return None
@@ -151,7 +151,7 @@ class RuTrackerClient:
             raise UnexpectedPageError(
                 f"Unexpected search page: {parse.page_summary(page.text, page.status_code)}"
             )
-        self._store.update(last_ok_at=datetime.now(UTC))
+        self._store.mark_ok()
         self.last_forums = parse.forums(page.text) or self.last_forums
         return parse.search_rows(page.text)
 
@@ -161,6 +161,7 @@ class RuTrackerClient:
             b"d8:"
         ):
             raise RuTrackerError("RuTracker did not return a .torrent file (not logged in?)")
+        self._store.mark_ok()
         return resp.content
 
     def topic_url(self, topic_id: int) -> str:

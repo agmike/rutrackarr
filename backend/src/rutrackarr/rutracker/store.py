@@ -1,6 +1,7 @@
 """Persistence of the RuTracker session (cookies encrypted at rest)."""
 
 import json
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -26,6 +27,9 @@ class SessionStore:
     def __init__(self, sessions: sessionmaker, box: SecretBox) -> None:
         self._sessions = sessions
         self._box = box
+        # Called on the transitions only: (kind, message, level) — "RuTracker failing" when an
+        # error follows success, "RuTracker OK" when success follows an error.
+        self.on_event: Callable[[str, str, str], None] | None = None
 
     def load(self) -> SessionState:
         with self._sessions() as s:
@@ -57,8 +61,22 @@ class SessionStore:
                     value = self._box.encrypt(json.dumps(value)) if value else None
                 setattr(row, key, value)
 
+    def failing(self) -> bool:
+        """An error is the latest news (not cleared by a success since)."""
+        return self.load().last_error is not None
+
     def record_error(self, message: str) -> None:
+        was_failing = self.failing()
         self.update(last_error=message[:1000], last_error_at=datetime.now(UTC))
+        if not was_failing and self.on_event:
+            self.on_event("rutracker_error", f"RuTracker: {message[:300]}", "error")
+
+    def mark_ok(self, **fields: object) -> None:
+        """A request succeeded: clears the error shown on the status page."""
+        was_failing = self.failing()
+        self.update(last_ok_at=datetime.now(UTC), last_error=None, **fields)
+        if was_failing and self.on_event:
+            self.on_event("rutracker_ok", "RuTracker answers again", "info")
 
     def clear(self) -> None:
         self.update(cookies=None, username=None, logged_in_at=None, last_ok_at=None)

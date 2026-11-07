@@ -167,9 +167,10 @@ export type Connection = {
 }
 export type ConnectionsView = { checked_at: string; items: Connection[] }
 
-export type DownloadStatus = "downloading" | "stalled" | "queued" | "stopped" | "error" | "seeding" | "missing" | "unknown"
+export type DownloadStatus = "downloading" | "stalled" | "queued" | "stopped" | "error" | "seeding" | "unknown"
 export type DownloadItem = {
   hash: string
+  real_hash: string
   release: string
   category: string
   topic_id: number
@@ -183,19 +184,55 @@ export type DownloadItem = {
   upspeed: number | null
   eta: number | null
   ratio: number | null
+  uploaded: number | null
+  downloaded: number | null
+  num_seeds: number | null
+  num_leechs: number | null
 }
-export type DownloadsView = { configured: boolean; error?: string | null; items: DownloadItem[] }
+export type DownloadTotals = {
+  releases: number
+  torrents: number
+  downloading: number
+  seeding: number
+  dlspeed: number
+  upspeed: number
+  uploaded: number
+  size: number
+}
+export type DownloadsView = { configured: boolean; error?: string | null; items: DownloadItem[]; totals: DownloadTotals | null }
 
-export type Grab = {
-  hash: string
-  release: string
-  topic_id: number
-  topic_url: string | null
-  served_at: string | null
-  via_proxy: boolean
-  category: string | null
+export type QueryStats = {
+  hours: number
+  queries: number
+  cached: number
+  errors: number
+  rutracker_requests: number
+  avg_ms: number | null
+  max_ms: number | null
+  by_caller: Record<string, number>
+  by_kind: Record<string, number>
 }
-export type GrabsView = { items: Grab[] }
+export type ServiceView = {
+  version: string
+  started_at: string
+  uptime_seconds: number
+  rutracker: { per_minute: number; last_minute: number; waiting: number; wait_seconds: number }
+  queries_24h: QueryStats
+  queries_7d: QueryStats
+}
+export type ActivityEvent = { at: string; kind: string; level: "info" | "warn" | "error"; message: string; topic_url: string | null }
+export type EventsView = { items: ActivityEvent[] }
+export type QueryEntry = {
+  at: string
+  caller: string
+  kind: string
+  query: string
+  results: number
+  rutracker_requests: number
+  duration_ms: number
+  error: string | null
+}
+export type QueriesView = { items: QueryEntry[] }
 
 export function formatBytes(n: number | null | undefined): string {
   if (n == null) return "—"

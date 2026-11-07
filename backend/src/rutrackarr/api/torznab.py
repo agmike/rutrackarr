@@ -1,17 +1,20 @@
 """Torznab endpoint for Sonarr/Radarr: /torznab/api and /torznab/download/{topic_id}."""
 
 import logging
+import time
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, Response
 
 from rutrackarr import __version__
+from rutrackarr.activity import caller_of
 from rutrackarr.releases.companions import find_video, plan
 from rutrackarr.releases.companions import fonts as _fonts
 from rutrackarr.releases.naming import file_tag, tagged
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
 from rutrackarr.rutracker.errors import RuTrackerError
+from rutrackarr.rutracker.ratelimit import REQUEST_COUNT
 from rutrackarr.torznab import feed
 from rutrackarr.torznab.search import Request as SearchRequest
 from rutrackarr.torznab.search import run
@@ -60,12 +63,28 @@ async def api(request: Request) -> Response:
         tmdbid=_int(p.get("tmdbid")),
         imdbid=_imdb(p.get("imdbid")),
     )
+    started, counter = time.monotonic(), [0]
+    token = REQUEST_COUNT.set(counter)
+    releases, error = [], None
     try:
         releases = await run(request.app.state.torznab_cache, req, request.app.state.resolver)
     except RuTrackerError as e:
-        request.app.state.rutracker_store.record_error(str(e))
+        error = str(e)
+        request.app.state.rutracker_store.record_error(error)
         log.warning("torznab %s q=%r failed: %s", req.kind, req.q, e)
-        return Response(feed.error(900, f"RuTracker: {e}"), media_type=XML)
+    finally:
+        REQUEST_COUNT.reset(token)
+        request.app.state.activity.query(
+            caller_of(request.headers.get("user-agent", "")),
+            "rss" if req.kind == "search" and not req.q and not _has_ids(req) else req.kind,
+            _describe(req),
+            len(releases),
+            counter[0],
+            round((time.monotonic() - started) * 1000),
+            error,
+        )
+    if error is not None:
+        return Response(feed.error(900, f"RuTracker: {error}"), media_type=XML)
     key = request.query_params["apikey"]
     base = str(request.base_url).rstrip("/") + request.app.state.settings.normalized_url_base
     client = request.app.state.rutracker
@@ -82,6 +101,24 @@ async def api(request: Request) -> Response:
     )
 
 
+def _has_ids(req: SearchRequest) -> bool:
+    return bool(req.tvdbid or req.tmdbid or req.imdbid)
+
+
+def _describe(req: SearchRequest) -> str:
+    """ "tvdb:410378 S1" / "One Piece 1156" / "tmdb:157336" / "(newest)" for the query log."""
+    parts = [
+        f"tvdb:{req.tvdbid}" if req.tvdbid else "",
+        f"tmdb:{req.tmdbid}" if req.tmdbid else "",
+        req.imdbid or "",
+        req.q,
+        f"S{req.season}" if req.season is not None else "",
+        f"E{req.ep}" if req.ep is not None else "",
+        f"#{req.absolute}" if getattr(req, "absolute", None) else "",
+    ]
+    return " ".join(p for p in parts if p) or "(newest)"
+
+
 @router.get("/download/{topic_id}")
 async def download(topic_id: int, request: Request, name: str = "") -> Response:
     """The .torrent, fetched from RuTracker when asked for and never stored (it has the passkey).
@@ -95,6 +132,12 @@ async def download(topic_id: int, request: Request, name: str = "") -> Response:
     except RuTrackerError as e:
         request.app.state.rutracker_store.record_error(str(e))
         return Response(feed.error(900, f"RuTracker: {e}"), media_type=XML, status_code=502)
+    request.app.state.activity.event(
+        "grab",
+        f"{caller_of(request.headers.get('user-agent', ''))} grabbed "
+        f"{name.strip() or f'topic {topic_id}'}",
+        topic_id=topic_id,
+    )
     release = name.strip() if request.app.state.qbit.configured() else ""
     if release:
         try:

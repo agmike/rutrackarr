@@ -313,3 +313,44 @@ def test_partial_name_match_keeps_the_rutracker_name():
     assert name(FRIEREN_S2, "Аниме (HD Video)", "Sousou no Frieren").startswith(
         "Sousou no Frieren S02"
     )
+
+
+def test_queries_logged_with_cache_and_errors(api, net):  # noqa: F811
+    rows = pages.row(2, FRIEREN_S1, "Аниме (HD Video)")
+    net.on("GET", "/forum/tracker.php", html(pages.search_page(rows)))
+    k = key(api)
+    ua = {"User-Agent": "Sonarr/4.0.20.3014 (ubuntu 24.04)"}
+    q = {"t": "search", "q": "Frieren", "apikey": k}
+    api.get("/torznab/api", params=q, headers=ua)
+    api.get("/torznab/api", params=q, headers=ua)  # from cache
+    log = api.get("/api/status/queries").json()["items"]
+    assert [(e["caller"], e["kind"], e["query"]) for e in log] == [
+        ("Sonarr", "search", "Frieren")
+    ] * 2
+    assert log[1]["rutracker_requests"] >= 1 and log[0]["rutracker_requests"] == 0
+    assert log[0]["results"] == log[1]["results"] == 1
+    s = api.get("/api/status/service").json()["queries_24h"]
+    assert (s["queries"], s["cached"], s["errors"], s["by_caller"]) == (2, 1, 0, {"Sonarr": 2})
+
+
+def test_rutracker_failure_logged_once_and_cleared(api, net):  # noqa: F811
+    from rutrackarr.background import tick
+
+    net.on("GET", "/forum/tracker.php", html(pages.MAINTENANCE, status=503))
+    k = key(api)
+    for word in ("x", "y"):
+        api.get("/torznab/api", params={"t": "search", "q": word, "apikey": k})
+    errors = api.get("/api/status/queries", params={"errors": "true"}).json()["items"]
+    assert len(errors) == 2 and "04:45" in errors[0]["error"]
+    kinds = [e["kind"] for e in api.get("/api/status/events").json()["items"]]
+    assert kinds == ["rutracker_error"]  # the transition only, not every failure
+    assert api.get("/api/rutracker/session").json()["last_error"]
+
+    # The heartbeat retries while failing; a success clears the error and logs the recovery.
+    net.on("GET", "/forum/index.php", html(pages.INDEX_LOGGED_IN))
+    import asyncio
+
+    asyncio.run(tick(api.app, {}))
+    assert api.get("/api/rutracker/session").json()["last_error"] is None
+    kinds = [e["kind"] for e in api.get("/api/status/events").json()["items"]]
+    assert kinds == ["rutracker_ok", "rutracker_error"]

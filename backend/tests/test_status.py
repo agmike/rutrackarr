@@ -86,27 +86,52 @@ def test_sonarr_unreachable(api, net):  # noqa: F811
     assert connections(api)["sonarr"]["state"] == "error"
 
 
-def test_downloads_and_grabs(api, net, qbit):  # noqa: F811
+def events(api):  # noqa: F811
+    return [(e["kind"], e["message"]) for e in api.get("/api/status/events").json()["items"]]
+
+
+def test_downloads_and_activity(api, net, qbit):  # noqa: F811
     assert connections(api)["qbittorrent"]["state"] == "error"  # fake has no app/version
     data, marked = serve(api, net)
-    grabs = api.get("/api/status/grabs").json()["items"]
-    assert grabs[0]["release"] == RELEASE and grabs[0]["via_proxy"] is False
-    assert grabs[0]["topic_url"].endswith("viewtopic.php?t=6830000")
+    assert events(api)[0][0] == "grab" and RELEASE in events(api)[0][1]
     login(api)
     add(api, marked)
+    assert events(api)[0][0] == "added"
     real = torrent.read(data).info_hash.lower()
-    qbit.torrents[real] |= {"progress": 0.25, "dlspeed": 1000, "eta": 60}
-    items = api.get("/api/status/downloads").json()["items"]
-    assert len(items) == 1
-    d = items[0]
+    qbit.torrents[real] |= {"progress": 0.25, "dlspeed": 1000, "upspeed": 50, "uploaded": 7}
+    body = api.get("/api/status/downloads").json()
+    (d,) = body["items"]
     assert d["release"] == RELEASE and d["category"] == CATEGORY
-    assert d["status"] == "downloading" and d["progress"] == 0.25 and d["eta"] == 60
-    assert api.get("/api/status/grabs").json()["items"][0]["via_proxy"] is True
+    assert d["status"] == "downloading" and d["progress"] == 0.25
+    assert body["totals"] | {} == body["totals"]
+    assert (body["totals"]["dlspeed"], body["totals"]["upspeed"]) == (1000, 50)
+    assert (body["totals"]["downloading"], body["totals"]["seeding"]) == (1, 0)
     qbit.torrents[real] |= {"progress": 1.0, "state": "stalledUP"}
     assert api.get("/api/status/downloads").json()["items"][0]["status"] == "seeding"
+
+    # The topic torrent disappears: the release is forgotten, the log says so.
     del qbit.torrents[real]
-    assert api.get("/api/status/downloads").json()["items"][0]["status"] == "missing"
+    assert api.get("/api/status/downloads").json()["items"] == []
+    kind, message = events(api)[0]
+    assert kind == "gone" and RELEASE in message
+
+
+def test_two_releases_one_topic_counted_once(api, net, qbit):  # noqa: F811
+    data, first = serve(api, net)
+    login(api)
+    add(api, first)
+    _, second = serve(api, net, name=RELEASE.replace("S01", "S01E02"))
+    add(api, second)
+    qbit.torrents[torrent.read(data).info_hash.lower()] |= {"dlspeed": 500}
+    totals = api.get("/api/status/downloads").json()["totals"]
+    assert (totals["releases"], totals["torrents"], totals["dlspeed"]) == (2, 1, 500)
 
 
 def test_downloads_proxy_off(api):  # noqa: F811
-    assert api.get("/api/status/downloads").json() == {"configured": False, "items": []}
+    assert api.get("/api/status/downloads").json()["configured"] is False
+
+
+def test_service(api):  # noqa: F811
+    s = api.get("/api/status/service").json()
+    assert s["uptime_seconds"] >= 0 and s["rutracker"]["per_minute"] == 60
+    assert s["queries_24h"]["queries"] == 0

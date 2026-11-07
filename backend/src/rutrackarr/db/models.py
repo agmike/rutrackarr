@@ -68,3 +68,32 @@ class MetadataRow(Base):
     key: Mapped[str] = mapped_column(String(200), primary_key=True)
     value: Mapped[str] = mapped_column(Text, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class QueryRow(Base):
+    """One Torznab search request from Sonarr/Radarr (kept for the status page's stats)."""
+
+    __tablename__ = "queries"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    caller: Mapped[str] = mapped_column(String(32), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # search | tvsearch | movie | rss
+    query: Mapped[str] = mapped_column(Text, nullable=False)  # what was asked, for display
+    results: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    rutracker_requests: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    duration_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class EventRow(Base):
+    """Something that happened: a grab, a torrent added/moved/removed, RuTracker down/up."""
+
+    __tablename__ = "events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(32), nullable=False)
+    level: Mapped[str] = mapped_column(String(8), nullable=False, default="info")  # info|warn|error
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    topic_id: Mapped[int | None] = mapped_column(Integer, nullable=True)

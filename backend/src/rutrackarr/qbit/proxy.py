@@ -28,6 +28,7 @@ from typing import Any
 from fastapi import APIRouter, Request, Response
 from starlette.datastructures import UploadFile
 
+from rutrackarr.activity import Activity
 from rutrackarr.qbit.upstream import Qbit, QbitError
 from rutrackarr.releases.naming import file_tag, tagged
 from rutrackarr.rutracker import torrent
@@ -69,7 +70,7 @@ async def api(path: str, request: Request) -> Response:
     if not qbit.configured():
         return _text("RuTrackarr: qBittorrent is not configured", 502)
     await request.body()  # cached: forwarded as is, and parsed as a form where needed
-    proxy = _Proxy(qbit, request.app.state.downloads)
+    proxy = _Proxy(qbit, request.app.state.downloads, request.app.state.activity)
     try:
         if path == "torrents/add" and request.method == "POST":
             return await proxy.add(request)
@@ -109,8 +110,8 @@ async def _params(request: Request) -> dict[str, str]:
 
 
 class _Proxy:
-    def __init__(self, qbit: Qbit, store: DownloadStore) -> None:
-        self.qbit, self.store = qbit, store
+    def __init__(self, qbit: Qbit, store: DownloadStore, activity: Activity) -> None:
+        self.qbit, self.store, self.activity = qbit, store, activity
         self._active: list[Download] | None = None
 
     def active(self) -> list[Download]:
@@ -195,6 +196,12 @@ class _Proxy:
             # In use again (a new release of a finished topic): back to the download category.
             await self._move(rhash, category)
         self.store.added(virtual_info, release, rhash, category)
+        how = "files tagged, started" if not want_stopped else "files tagged, stopped"
+        self.activity.event(
+            "added",
+            f"Added to qBittorrent ({category or 'no category'}): {release} — "
+            + (how if not present else "its topic was already there"),
+        )
         log.info("qbit add: %s → %s (%s)", release, rhash, "new" if not present else "present")
         return True
 
@@ -257,6 +264,8 @@ class _Proxy:
             for d in wanted:
                 if (real := reals.get(d.real_hash or "")) is not None:
                     out.append(_virtual(real, d))
+                else:
+                    forget_gone(self.store, self.activity, d)
         return Response(_json(out), media_type="application/json")
 
     # --- commands on virtual hashes ----------------------------------------------------------
@@ -275,6 +284,10 @@ class _Proxy:
             cats = {d.category or "" for d in active if d.real_hash == real}
             if cats == {category} and category:
                 await self._move(real.lower(), category)
+                names = [d.release or d.name for d in active if d.real_hash == real]
+                self.activity.event(
+                    "moved", f"Moved to {category}: {'; '.join(names)} (topic torrent followed)"
+                )
         rest = [h for h in hashes if h and h.upper() not in virtual]
         if rest:
             r = await self.qbit.post(
@@ -293,6 +306,18 @@ class _Proxy:
         reals = {virtual[h].real_hash for h in removed} - still_used
         rest = [h for h in hashes if h and h.upper() not in virtual]
         rest += [h.lower() for h in reals if h]
+        for h in removed:
+            d = virtual[h]
+            gone = d.real_hash in reals
+            self.activity.event(
+                "removed",
+                f"Removed by the download client: {d.release or d.name}"
+                + (
+                    f" — topic torrent deleted{' with its files' if delete_files == 'true' else ''}"
+                    if gone
+                    else " — topic torrent kept (other releases use it)"
+                ),
+            )
         if rest:
             r = await self.qbit.post(
                 "torrents/delete", hashes="|".join(rest), deleteFiles=delete_files
@@ -344,3 +369,14 @@ def _virtual(real: dict[str, Any], d: Download) -> dict[str, Any]:
 
 def _json(value: Any) -> bytes:
     return json.dumps(value, ensure_ascii=False).encode()
+
+
+def forget_gone(store: DownloadStore, activity: Activity, d: Download) -> None:
+    """A release whose topic torrent is no longer in qBittorrent: stop tracking it."""
+    store.removed(d.info_hash)
+    activity.event(
+        "gone",
+        f"Topic torrent removed from qBittorrent: {d.release or d.name} — no longer tracked",
+        level="warn",
+        topic_id=d.topic_id or None,
+    )

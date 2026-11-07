@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 import httpx
 from fastapi import APIRouter, Request
 
+from rutrackarr import __version__
+from rutrackarr.qbit.proxy import forget_gone
 from rutrackarr.qbit.upstream import QbitError
 
 log = logging.getLogger(__name__)
@@ -202,17 +204,36 @@ def _ago(seconds: float) -> str:
     return f"{int(seconds // 86400)} days ago"
 
 
+# --- service ---------------------------------------------------------------------------------
+
+
+@router.get("/service")
+def service(request: Request) -> dict[str, Any]:
+    """Version, uptime, the RuTracker request budget right now, and query totals."""
+    started = request.app.state.started_at
+    activity = request.app.state.activity
+    return {
+        "version": __version__,
+        "started_at": started.isoformat(),
+        "uptime_seconds": round((datetime.now(UTC) - started).total_seconds()),
+        "rutracker": request.app.state.spacer.stats(),
+        "queries_24h": activity.stats(24),
+        "queries_7d": activity.stats(24 * 7),
+    }
+
+
 # --- downloads -------------------------------------------------------------------------------
 
 
 @router.get("/downloads")
 async def downloads(request: Request) -> dict[str, Any]:
     """Releases added through the download client proxy and not removed, with their topic's
-    torrent state from qBittorrent."""
+    torrent state from qBittorrent. A topic gone from qBittorrent is forgotten (and logged)."""
     qbit = request.app.state.qbit
     if not qbit.configured():
-        return {"configured": False, "items": []}
-    active = [d for d in request.app.state.downloads.active() if d.real_hash]
+        return {"configured": False, "items": [], "totals": None}
+    store, activity = request.app.state.downloads, request.app.state.activity
+    active = [d for d in store.active() if d.real_hash]
     reals: dict[str, dict[str, Any]] = {}
     error = None
     if active:
@@ -228,27 +249,52 @@ async def downloads(request: Request) -> dict[str, Any]:
     items = []
     for d in active:
         t = reals.get(d.real_hash or "")
+        if t is None and error is None:
+            forget_gone(store, activity, d)
+            continue
         items.append(
             {
                 "hash": d.info_hash,
+                "real_hash": d.real_hash,
                 "release": d.release or d.name,
                 "category": d.category or "",
                 "topic_id": d.topic_id,
                 "topic_url": client.topic_url(d.topic_id) if d.topic_id else None,
                 "added_at": d.added_at.isoformat() if d.added_at else None,
-                "status": _status(t) if t else ("unknown" if error else "missing"),
-                "state": t.get("state") if t else None,
-                "progress": t.get("progress") if t else None,
-                "size": t.get("size") if t else None,
-                "dlspeed": t.get("dlspeed") if t else None,
-                "upspeed": t.get("upspeed") if t else None,
-                "eta": t.get("eta") if t else None,
-                "ratio": t.get("ratio") if t else None,
+                "status": _status(t) if t else "unknown",
+                **{
+                    k: (t.get(k) if t else None)
+                    for k in (
+                        "state",
+                        "progress",
+                        "size",
+                        "dlspeed",
+                        "upspeed",
+                        "eta",
+                        "ratio",
+                        "uploaded",
+                        "downloaded",
+                        "num_seeds",
+                        "num_leechs",
+                    )
+                },
             }
         )
     order = {"downloading": 0, "stalled": 1, "queued": 2, "stopped": 3, "error": 4, "seeding": 5}
-    items.sort(key=lambda i: (order.get(i["status"], 6), i["added_at"] or ""), reverse=False)
-    return {"configured": True, "error": error, "items": items}
+    items.sort(key=lambda i: (order.get(i["status"], 6), i["release"]))
+    # Totals per topic torrent: several releases can share one.
+    torrents = list(reals.values())
+    totals = {
+        "releases": len(items),
+        "torrents": len(torrents),
+        "downloading": sum(1 for i in items if i["status"] in ("downloading", "stalled", "queued")),
+        "seeding": sum(1 for i in items if i["status"] == "seeding"),
+        "dlspeed": sum(int(t.get("dlspeed") or 0) for t in torrents),
+        "upspeed": sum(int(t.get("upspeed") or 0) for t in torrents),
+        "uploaded": sum(int(t.get("uploaded") or 0) for t in torrents),
+        "size": sum(int(t.get("size") or 0) for t in torrents),
+    }
+    return {"configured": True, "error": error, "items": items, "totals": totals}
 
 
 def _status(t: dict[str, Any]) -> str:
@@ -266,24 +312,40 @@ def _status(t: dict[str, Any]) -> str:
     return "downloading"
 
 
-# --- recent grabs ----------------------------------------------------------------------------
+# --- activity and queries --------------------------------------------------------------------
 
 
-@router.get("/grabs")
-def grabs(request: Request, limit: int = 10) -> dict[str, Any]:
-    """The .torrent files served most recently (what Sonarr/Radarr grabbed)."""
+@router.get("/events")
+def events(request: Request, limit: int = 25) -> dict[str, Any]:
     client = request.app.state.rutracker
-    out = []
-    for d in request.app.state.downloads.recent(max(1, min(limit, 50))):
-        out.append(
+    return {
+        "items": [
             {
-                "hash": d.info_hash,
-                "release": d.release or d.title or d.name,
-                "topic_id": d.topic_id,
-                "topic_url": client.topic_url(d.topic_id) if d.topic_id else None,
-                "served_at": d.created_at.isoformat() if d.created_at else None,
-                "via_proxy": d.real_hash is not None,
-                "category": d.category,
+                "at": e.at.isoformat(),
+                "kind": e.kind,
+                "level": e.level,
+                "message": e.message,
+                "topic_url": client.topic_url(e.topic_id) if e.topic_id else None,
             }
-        )
-    return {"items": out}
+            for e in request.app.state.activity.events(max(1, min(limit, 200)))
+        ]
+    }
+
+
+@router.get("/queries")
+def queries(request: Request, limit: int = 25, errors: bool = False) -> dict[str, Any]:
+    return {
+        "items": [
+            {
+                "at": q.at.isoformat(),
+                "caller": q.caller,
+                "kind": q.kind,
+                "query": q.query,
+                "results": q.results,
+                "rutracker_requests": q.rutracker_requests,
+                "duration_ms": q.duration_ms,
+                "error": q.error,
+            }
+            for q in request.app.state.activity.queries(max(1, min(limit, 200)), errors)
+        ]
+    }

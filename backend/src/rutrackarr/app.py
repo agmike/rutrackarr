@@ -1,17 +1,21 @@
 """Application factory."""
 
+from datetime import UTC, datetime
+
 import httpx
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from rutrackarr import __version__
+from rutrackarr.activity import Activity
 from rutrackarr.api import arr as arr_api
 from rutrackarr.api import rutracker as rutracker_api
 from rutrackarr.api import settings as settings_api
 from rutrackarr.api import status as status_api
 from rutrackarr.api import system
 from rutrackarr.api import torznab as torznab_api
+from rutrackarr.background import lifespan
 from rutrackarr.config import BootstrapSettings
 from rutrackarr.crypto import SecretBox
 from rutrackarr.db.engine import make_engine, make_sessionmaker, migrate
@@ -40,6 +44,7 @@ def create_app(
     base = settings.normalized_url_base
 
     app = FastAPI(
+        lifespan=lifespan,
         title="RuTrackarr",
         version=__version__,
         docs_url=f"{base}/api/docs",
@@ -57,16 +62,24 @@ def create_app(
     app.state.settings_service = svc
     svc.api_key()  # ensure a Torznab API key exists
 
+    app.state.started_at = datetime.now(UTC)
+    app.state.activity = Activity(sessions)
     store = SessionStore(sessions, box)
+    store.on_event = lambda kind, message, level: app.state.activity.event(
+        kind, message, level=level
+    )
     http = RuTrackerHttp(
         store,
         base_url=lambda: str(svc.get("rutracker.base_url")),
         flaresolverr_url=lambda: str(svc.get("flaresolverr.url")),
         flaresolverr_timeout=lambda: int(svc.get("flaresolverr.timeout_seconds") or 60),
-        spacer=RequestSpacer(lambda: int(svc.get("rutracker.requests_per_minute") or 10)),
+        spacer=(
+            spacer := RequestSpacer(lambda: int(svc.get("rutracker.requests_per_minute") or 10))
+        ),
         transport=transport,
     )
     app.state.rutracker_store = store
+    app.state.spacer = spacer
     app.state.rutracker_http = http
     app.state.rutracker = RuTrackerClient(
         http, store, lambda: (svc.get("rutracker.username"), svc.get("rutracker.password"))
