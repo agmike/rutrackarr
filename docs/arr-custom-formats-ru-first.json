@@ -39,7 +39,7 @@
         "negate": false,
         "required": true,
         "fields": {
-          "value": "\\b(RusSubs|EngSubs)\\b"
+          "value": "\\b(Rus|Eng)(Soft)?Subs\\b"
         }
       }
     ]
@@ -129,7 +129,7 @@
         "negate": true,
         "required": true,
         "fields": {
-          "value": "\\bRus(Dub|MVO|DVO|AVO|VO|Voice|Subs)\\b|\\b(audio|subs?)\\b.*(\\b(rus|russian)\\b|\\bрусск)"
+          "value": "\\bRus(Dub|MVO|DVO|AVO|VO|Voice|(Soft)?Subs)\\b|\\b(audio|subs?)\\b.*(\\b(rus|russian)\\b|\\bрусск)"
         }
       },
       {

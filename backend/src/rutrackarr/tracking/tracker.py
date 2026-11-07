@@ -29,7 +29,7 @@ from rutrackarr.db.models import TrackedRow
 from rutrackarr.qbit import topics
 from rutrackarr.qbit.upstream import Qbit
 from rutrackarr.releases.language import assess
-from rutrackarr.releases.naming import file_tag, release_name, tagged
+from rutrackarr.releases.naming import file_tag, release_name, tagged, untagged
 from rutrackarr.releases.sections import classify
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
@@ -404,11 +404,12 @@ class Tracker:
                     "torrents/renameFolder", hash=new_hash, oldPath=new_root, newPath=old_root
                 )
                 new_files = [old_root + f[len(new_root) :] for f in new_files]
-            old_tag, new_tag = _tag(t.title, t.forum), _tag(title, t.forum)
-            existing = set(old_files)
+            # Same files keep the names they have on disk (whatever tag they got back then), so
+            # the recheck finds them; new files get the topic's current tag.
+            new_tag = _tag(title, t.forum)
+            on_disk = {untagged(o): o for o in old_files}
             for f in new_files:
-                target = tagged(f, old_tag)
-                target = target if target in existing else tagged(f, new_tag)
+                target = on_disk.get(f) or tagged(f, new_tag)
                 if target != f:
                     await self._qbit.post(
                         "torrents/renameFile", hash=new_hash, oldPath=f, newPath=target

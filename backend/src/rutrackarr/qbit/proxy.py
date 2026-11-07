@@ -5,7 +5,7 @@ Everything is passed through, except what makes RuTracker topics import like any
 - ``torrents/add`` of a torrent RuTrackarr served marked (its release name in the info dict, so
   each release has its own hash): the mark is stripped and the real torrent — the topic as
   RuTracker serves it — is added stopped, its video files renamed with the release's language
-  tokens ("… OrigAudio RusSubs RTA-T1 -RuTracker.mkv", so the imported file scores like the
+  tokens ("… OrigAudio RusSoftSubs RTA-T1 -RuTracker.mkv", so the imported file scores like the
   grab), then started unless Sonarr/Radarr asked for it stopped. A topic already in qBittorrent
   is reused.
 - The release is a *virtual* download: Sonarr/Radarr see it under its own hash, with the release

@@ -3,15 +3,17 @@
 A RuTracker title is rewritten into a scene-style name Sonarr/Radarr parse reliably:
 
     <Name> <S02 | S02E01-E08 | - 1156-1180 | 2014> <1080p> <BluRay> <h264> <HDR>
-        <JAPANESE RUSSIAN> <OrigSubs | RusDub …> <RTA-T1> -RuTracker
+        <JAPANESE RUSSIAN> <OrigSoftSubs | RusDub …> <RTA-T1> -RuTracker
 
 - Name: the title Sonarr/Radarr searched for (always one of the series' own titles, so the
   release maps back to it); for RSS, the first Latin name of the RuTracker title with season
   hints removed. The season goes into SxxEyy.
 - Language words (JAPANESE, RUSSIAN, …) are for Sonarr/Radarr's own language detection.
-- CamelCase tokens (RusDub, OrigSubs, EngVoice, …) and the tier token RTA-T<n> are for custom
+- CamelCase tokens (RusDub, OrigSoftSubs, EngVoice, …) and the tier token RTA-T<n> are for custom
   formats; single words, so Sonarr's language parser doesn't read "RUS" out of them, and no
-  "dub" word of its own (TRaSH's anime "Dubs Only" format would score it -10000).
+  "dub" word of its own (TRaSH's anime "Dubs Only" format would score it -10000). Subtitle
+  tokens end in "SoftSubs": Radarr takes any other word ending in "Subs" for burned-in
+  subtitles and rejects the release.
 """
 
 import re
@@ -174,7 +176,7 @@ def language_tokens(
     if verdict.label == "No dialogue":
         tokens.append("NoDialogue")
     elif verdict.tier == 1 and verdict.original != "rus":
-        tokens.append("OrigSubs")
+        tokens.append("OrigSoftSubs")
     # Only the best Russian voice type: custom-format scores add up, so listing every track
     # would make "one more voice-over" look like an upgrade of the same release.
     voices = {a.voice for a in t.audio if a.lang == "rus" and not a.original}
@@ -186,9 +188,9 @@ def language_tokens(
     if any(a.lang == "eng" and not a.original and verdict.original != "eng" for a in t.audio):
         tokens.append("EngVoice")  # not "EngDub": TRaSH's anime "Dubs Only" matches eng_?dub
     if "rus" in t.subs or t.subs_unknown:
-        tokens.append("RusSubs")
+        tokens.append("RusSoftSubs")
     if "eng" in t.subs:
-        tokens.append("EngSubs")
+        tokens.append("EngSoftSubs")
     return [*words, *tokens, f"RTA-T{verdict.tier}"]
 
 
@@ -228,8 +230,8 @@ def release_name(
 
 
 _FILE_TOKENS = re.compile(
-    r"\b(?:OrigAudio|NoDialogue|OrigSubs|Rus(?:Dub|MVO|DVO|AVO|VO|Voice|Subs)"
-    r"|Eng(?:Voice|Subs)|RTA-T\d|RTA-QC)\b"
+    r"\b(?:OrigAudio|NoDialogue|Orig(?:Soft)?Subs|Rus(?:Dub|MVO|DVO|AVO|VO|Voice|(?:Soft)?Subs)"
+    r"|Eng(?:Voice|(?:Soft)?Subs)|RTA-T\d|RTA-QC)\b"
 )
 VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".wmv", ".mov", ".webm"}
 
@@ -247,3 +249,16 @@ def tagged(path: str, tag: str) -> str:
     if not dot or f".{ext.lower()}" not in VIDEO_EXTS or stem.endswith(f" {tag}"):
         return path
     return f"{head}{sep}{stem} {tag}.{ext}"
+
+
+def untagged(path: str) -> str:
+    """The file name before RuTrackarr tagged it: "Show/Ep 01 OrigAudio RusSubs RTA-T1
+    -RuTracker.mkv" → "Show/Ep 01.mkv" (whatever tokens the tag had)."""
+    head, sep, name = path.rpartition("/")
+    stem, dot, ext = name.rpartition(".")
+    if not dot or not stem.endswith(" -RuTracker"):
+        return path
+    words = stem[: -len(" -RuTracker")].split(" ")
+    while len(words) > 1 and _FILE_TOKENS.fullmatch(words[-1]):
+        words.pop()
+    return f"{head}{sep}{' '.join(words)}.{ext}"

@@ -16,7 +16,7 @@ from tests.test_rutracker_flow import api, net  # noqa: F401  (fixtures)
 TOPIC = "Kyouran Reijou Nia Liston [WEB-DL 1080p] [SubsPlus+]"
 RELEASE = (
     "Kyouran Reijou Nia Liston S01 1080p WEB-DL JAPANESE RUSSIAN "
-    "OrigAudio OrigSubs RusVoice RusSubs RTA-T1 -RuTracker"
+    "OrigAudio OrigSoftSubs RusVoice RusSoftSubs RTA-T1 -RuTracker"
 )
 CATEGORY = "sonarr-rutracker"
 
@@ -175,7 +175,7 @@ def test_mark_round_trip():
 
 
 def test_file_tag():
-    assert file_tag(RELEASE) == "OrigAudio OrigSubs RusVoice RusSubs RTA-T1 -RuTracker"
+    assert file_tag(RELEASE) == "OrigAudio OrigSoftSubs RusVoice RusSoftSubs RTA-T1 -RuTracker"
     tag = file_tag(RELEASE)
     assert tagged("A/Ep 01.mkv", tag) == f"A/Ep 01 {tag}.mkv"
     assert tagged(f"A/Ep 01 {tag}.mkv", tag) == f"A/Ep 01 {tag}.mkv"
@@ -380,3 +380,27 @@ def test_qui_mode_goes_through_the_proxy_without_login(api, net):  # noqa: F811
     net.on("GET", "/proxy/other/api/v2/app/version", httpx.Response(403))
     bad = api.post("/api/arr/qbittorrent/test", json={"qui_token": "other"})
     assert bad.status_code == 502 and "qui URL and token" in bad.json()["detail"]
+
+
+def test_untagged_and_old_tokens():
+    from rutrackarr.releases.naming import file_tag, untagged
+
+    old = "Show/Ep 01 [1080p] OrigAudio OrigSubs RusVoice RusSubs RTA-T1 -RuTracker.mkv"  # < v0.13
+    new = "Show/Ep 01 [1080p] OrigAudio OrigSoftSubs RusSoftSubs RTA-T1 RTA-QC -RuTracker.mkv"
+    assert untagged(old) == untagged(new) == "Show/Ep 01 [1080p].mkv"
+    assert untagged("Show/Ep 01.mkv") == "Show/Ep 01.mkv"
+    assert file_tag("X OrigAudio OrigSubs RusSubs RTA-T1 -RuTracker").startswith(
+        "OrigAudio OrigSubs RusSubs"
+    )
+
+
+def test_radarr_does_not_take_soft_subs_for_hardcoded():
+    import re
+
+    # Radarr's Parser.HardcodedSubsRegex (src/NzbDrone.Core/Parser/Parser.cs)
+    hc = re.compile(
+        r"\b((?P<hcsub>(\w+(?<!SOFT)(?<!MULTI)(?<!HORRIBLE)SUBS?))|(?P<hc>(HC|SUBBED)))\b", re.I
+    )
+    new = "X 2005 1080p BluRay OrigAudio OrigSoftSubs RusVoice RusSoftSubs EngSoftSubs RTA-T1"
+    assert not hc.search(new)
+    assert hc.search("X 2005 OrigAudio RusSubs RTA-T1 -RuTracker")  # old tokens: taken for hardsubs

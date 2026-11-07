@@ -62,7 +62,7 @@ def test_series_via_tmdb(api, net):  # noqa: F811
         # Original track without a stated language: ENGLISH from TMDb.
         "Sherlock S01 1080p WEB-DL ENGLISH RUSSIAN OrigAudio RusMVO RTA-T2 -RuTracker",
         # No season number in the title: 2014 is season 3's year.
-        "Sherlock S03 1080p WEB-DL ENGLISH RUSSIAN OrigAudio OrigSubs RusDub RusSubs EngSubs RTA-T1 -RuTracker",
+        "Sherlock S03 1080p WEB-DL ENGLISH RUSSIAN OrigAudio OrigSoftSubs RusDub RusSoftSubs EngSoftSubs RTA-T1 -RuTracker",
     ]  # "Шерлок в России" is another series
     attrs = {a.get("name"): a.get("value") for a in found[0].findall("torznab:attr", NS)}
     assert attrs["tvdbid"] == "176941"
@@ -94,7 +94,7 @@ def test_movie_via_tmdb_and_radarr(api, net):  # noqa: F811
         )
     )
     assert [i.findtext("title") for i in found] == [
-        "Interstellar 2014 1080p BluRay ENGLISH RUSSIAN OrigAudio OrigSubs RusDub RusSubs EngSubs RTA-T1 -RuTracker"
+        "Interstellar 2014 1080p BluRay ENGLISH RUSSIAN OrigAudio OrigSoftSubs RusDub RusSoftSubs EngSoftSubs RTA-T1 -RuTracker"
     ]  # the 1989 film of the same name is dropped
     attrs = {a.get("name"): a.get("value") for a in found[0].findall("torznab:attr", NS)}
     assert (attrs["tmdbid"], attrs["imdbid"]) == ("157336", "tt0816692")
