@@ -111,11 +111,13 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
   }
   return (
     <li className="grid min-w-0 gap-1 border-b pb-3 last:border-b-0">
-      <div className="flex min-w-0 items-start gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <Badge variant={t.state === "gone" ? "destructive" : t.source === "manual" ? "default" : "outline"}>
           {t.state === "gone" ? "gone" : t.source === "manual" ? "by hand" : "grabbed"}
         </Badge>
-        <span className="min-w-0 flex-1 break-words font-medium">{t.title}</span>
+        <span className="min-w-0 flex-1 truncate font-medium" title={t.title}>
+          {t.title}
+        </span>
         <a href={t.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
           <ExternalLink className="size-3.5" />
         </a>

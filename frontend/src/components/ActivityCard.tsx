@@ -23,14 +23,16 @@ export function ActivityCard() {
         {q.data && q.data.items.length === 0 && <p className="text-muted-foreground">Nothing yet.</p>}
         <ul className="grid gap-1.5">
           {q.data?.items.map((e, i) => (
-            <li key={`${e.at}-${i}`} className="flex min-w-0 items-start gap-2">
-              <span className="w-16 shrink-0 pt-0.5 text-xs text-muted-foreground" title={formatWhen(e.at)}>
+            <li key={`${e.at}-${i}`} className="flex min-w-0 items-center gap-2">
+              <span className="w-16 shrink-0 text-xs text-muted-foreground" title={formatWhen(e.at)}>
                 {formatAgo(e.at)}
               </span>
-              <span className="shrink-0 pt-0.5">{ICON[e.level] ?? ICON.info}</span>
-              <span className="min-w-0 flex-1 break-words">{e.message}</span>
+              <span className="shrink-0">{ICON[e.level] ?? ICON.info}</span>
+              <span className="min-w-0 flex-1 truncate" title={e.message}>
+                {e.message}
+              </span>
               {e.topic_url && (
-                <a href={e.topic_url} target="_blank" rel="noreferrer" className="shrink-0 pt-0.5 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
+                <a href={e.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
                   <ExternalLink className="size-3.5" />
                 </a>
               )}

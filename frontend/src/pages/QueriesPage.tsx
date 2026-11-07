@@ -133,8 +133,11 @@ function Details({ id, query }: { id: number; query: string }) {
         const pin = !d.release ? overrideLink(query, d.topic_id) : null
         return (
           <li key={d.topic_id} className="grid min-w-0 gap-0.5">
-            <div className="flex min-w-0 items-start gap-2">
-              <span className={d.release ? "min-w-0 flex-1 break-words" : "min-w-0 flex-1 break-words text-muted-foreground"}>
+            <div className="flex min-w-0 items-center gap-2">
+              <span
+                className={d.release ? "min-w-0 flex-1 truncate" : "min-w-0 flex-1 truncate text-muted-foreground"}
+                title={d.release ? `${d.release}\n${d.title}` : d.title}
+              >
                 {d.release ?? d.title}
               </span>
               {pin && (
@@ -190,8 +193,10 @@ function Dropped() {
             const pin = overrideLink(d.last_query, d.topic_id)
             return (
               <li key={`${d.topic_id}-${d.reason}`} className="grid min-w-0 gap-0.5 border-b pb-2 last:border-b-0">
-                <div className="flex min-w-0 items-start gap-2">
-                  <span className="min-w-0 flex-1 break-words">{d.title}</span>
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="min-w-0 flex-1 truncate" title={d.title}>
+                    {d.title}
+                  </span>
                   {pin && (
                     <Link to={pin} title="Pin this topic to the series" className="shrink-0 text-muted-foreground hover:text-foreground">
                       <Pin className="size-3.5" />
