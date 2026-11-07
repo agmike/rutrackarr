@@ -20,6 +20,7 @@ from rutrackarr.releases.title import ParsedTitle
 AUDIO = {".mka", ".ac3", ".eac3", ".dts", ".aac", ".flac", ".m4a", ".mp3", ".opus", ".thd", ".wav"}
 SUBS = {".ass", ".ssa", ".srt", ".sup", ".vtt", ".sub", ".idx"}
 VIDEO = {".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".wmv", ".mov", ".webm"}
+FONTS = {".ttf", ".otf", ".ttc", ".otc"}
 
 _LANG_TOKENS = {
     "ru": ("rus", "ru", "russian", "рус", "русская", "русские", "русский"),
@@ -130,3 +131,8 @@ def _team_from_dirs(parts: tuple[str, ...]) -> str:
         if team := _clean(part):
             return team
     return ""
+
+
+def fonts(files: list[str]) -> list[str]:
+    """The torrent's font files (for ASS subtitles; a player's shared font folder)."""
+    return sorted(f for f in files if PurePosixPath(f).suffix.lower() in FONTS)

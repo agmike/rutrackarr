@@ -135,3 +135,20 @@ def test_download_then_companions(api, net):  # noqa: F811
     assert (
         api.get("/torznab/companions", params={"hash": info_hash, "source": src}).status_code == 401
     )
+
+
+def test_companions_lists_fonts_when_asked(api, net):  # noqa: F811
+    files = [*NIA_FILES, "Fonts/Lato-ExtraBold.ttf", "RUS Subs [Amediateka]/fonts/BrushType.OTF"]
+    data, info_hash = make_torrent("Kyouran Reijou Nia Liston [WEB-DL 1080p] [SubsPlus+]", files)
+    net.on("GET", "/forum/dl.php", httpx.Response(200, content=data))
+    k = key(api)
+    api.get("/torznab/download/6830000", params={"apikey": k})
+    src = f"/x/{NIA.format(n=1, crc=CRC[1])}.mkv"
+    plain = api.get("/torznab/companions", params={"hash": info_hash, "source": src, "apikey": k})
+    assert "#font" not in plain.text  # older scripts don't know the line
+    r = api.get(
+        "/torznab/companions",
+        params={"hash": info_hash, "source": src, "apikey": k, "fonts": "1"},
+    )
+    fonts = [line.split("\t")[1] for line in r.text.splitlines() if line.startswith("#font\t")]
+    assert fonts == ["Fonts/Lato-ExtraBold.ttf", "RUS Subs [Amediateka]/fonts/BrushType.OTF"]

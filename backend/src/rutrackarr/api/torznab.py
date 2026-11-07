@@ -7,6 +7,7 @@ from fastapi import APIRouter, Request, Response
 
 from rutrackarr import __version__
 from rutrackarr.releases.companions import find_video, plan
+from rutrackarr.releases.companions import fonts as _fonts
 from rutrackarr.releases.naming import file_tag, tagged
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
@@ -123,12 +124,13 @@ def _remember(request: Request, topic_id: int, data: bytes, release: str | None 
 
 
 @router.get("/companions")
-def companions(request: Request, hash: str = "", source: str = "") -> Response:
+def companions(request: Request, hash: str = "", source: str = "", fonts: bool = False) -> Response:
     """For Sonarr's import script: the external tracks that belong to an imported video.
 
     Plain text, tab-separated: a ``#video`` line with the video's path inside the torrent (the
     script strips it from the source path to find the torrent's folder), then one line per
-    companion file: path inside the torrent, suffix for the episode's name.
+    companion file: path inside the torrent, suffix for the episode's name. With ``fonts``, then
+    a ``#font`` line per font file of the torrent (path inside it), for a shared font folder.
     """
     if not _authorized(request):
         return Response("Incorrect API key\n", media_type="text/plain", status_code=401)
@@ -146,4 +148,6 @@ def companions(request: Request, hash: str = "", source: str = "") -> Response:
     lines = [f"#video\t{found}"] + [
         f"{c.path}\t{c.suffix}" for c in plan(download.files, video, title)
     ]
+    if fonts:  # asked for by script versions that can link them
+        lines += [f"#font\t{f}" for f in _fonts(download.files)]
     return Response("\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")

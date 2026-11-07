@@ -7,6 +7,9 @@
 #                              imported episode and hardlinks them next to it as
 #                              <episode>.<lang>.<title>.<flags>.<ext> (Jellyfin/Plex/Kodi
 #                              naming, e.g. "….ru.StudioBand.mka", "….ru.Team signs.forced.ass")
+#                              and, with RUTRACKARR_FONTS_DIR set, links the torrent's fonts
+#                              (for ASS subtitles) into that shared folder as
+#                              <name>.<content hash>.<ext> — Jellyfin's "fallback fonts" folder
 #   On Rename:                 moves them along with the episode
 #   On Episode File Delete:    removes them (incl. when an upgrade replaces the episode)
 #
@@ -15,6 +18,8 @@
 # next to this script:
 #   RUTRACKARR_URL      e.g. http://rutrackarr:8787/rutrackarr
 #   RUTRACKARR_API_KEY  the Torznab API key
+#   RUTRACKARR_FONTS_DIR  optional: shared font folder (e.g. /data/media/.fonts); fonts are never
+#                         removed from it (several episodes and torrents share them)
 set -uo pipefail
 
 here=$(dirname "$(readlink -f "$0")")
@@ -23,6 +28,7 @@ here=$(dirname "$(readlink -f "$0")")
 
 RUTRACKARR_URL="${RUTRACKARR_URL:-}"
 RUTRACKARR_API_KEY="${RUTRACKARR_API_KEY:-}"
+RUTRACKARR_FONTS_DIR="${RUTRACKARR_FONTS_DIR:-}"
 
 # Sonarr logs a script's stdout as info and its stderr as errors.
 log() { echo "rutrackarr-companions: $*"; }
@@ -57,6 +63,22 @@ companions_of() {
 	done
 }
 
+# A font of the torrent into the shared folder, named by content so identical fonts from
+# different torrents are one file and different fonts with the same name never collide.
+font() {
+	local from="$1" name hash to
+	name="${from##*/}"
+	if [ ! -f "$from" ]; then
+		warn "missing $from"
+		return
+	fi
+	hash=$(sha256sum "$from" | cut -c1-12) || return
+	to="$RUTRACKARR_FONTS_DIR/${name%.*}.$hash.${name##*.}"
+	[ -e "$to" ] && return
+	mkdir -p "$RUTRACKARR_FONTS_DIR" &&
+		{ ln "$from" "$to" 2>/dev/null || cp "$from" "$to"; } && log "font $to"
+}
+
 link() {
 	local src dst id plan path suffix root="" from to
 	src=$(var sonarr_episodefile_sourcepath Sonarr_EpisodeFile_SourcePath)
@@ -65,7 +87,8 @@ link() {
 	[ -n "$src" ] && [ -n "$dst" ] && [ -n "$id" ] && [ -n "$RUTRACKARR_URL" ] || return 0
 	if ! plan=$(curl -fsS --max-time 30 -G "${RUTRACKARR_URL%/}/torznab/companions" \
 		--data-urlencode "hash=$id" --data-urlencode "source=$src" \
-		--data-urlencode "apikey=$RUTRACKARR_API_KEY" 2>/dev/null); then
+		--data-urlencode "apikey=$RUTRACKARR_API_KEY" \
+		${RUTRACKARR_FONTS_DIR:+--data-urlencode fonts=1} 2>/dev/null); then
 		return 0 # not a RuTrackarr download (or RuTrackarr unreachable): nothing to do
 	fi
 	while IFS=$'\t' read -r path suffix; do
@@ -79,6 +102,10 @@ link() {
 			continue
 		fi
 		[ -n "$root" ] || continue
+		if [ "$path" = "#font" ]; then
+			font "$root$suffix"
+			continue
+		fi
 		from="$root$path"
 		to="${dst%.*}.$suffix"
 		if [ ! -f "$from" ]; then
