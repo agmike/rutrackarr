@@ -19,9 +19,9 @@ export function RecentGrabsCard() {
         {q.isPending && <p className="text-muted-foreground">loading…</p>}
         {q.error && <p className="text-destructive">Could not load: {q.error.message}</p>}
         {q.data && q.data.items.length === 0 && <p className="text-muted-foreground">Nothing grabbed yet.</p>}
-        <ul className="grid gap-1.5">
+        <ul className="grid min-w-0 gap-1.5">
           {q.data?.items.map((g) => (
-            <li key={g.hash} className="flex items-center gap-2">
+            <li key={g.hash} className="flex min-w-0 items-center gap-2">
               <span className="w-20 shrink-0 text-xs text-muted-foreground" title={formatWhen(g.served_at)}>
                 {formatAgo(g.served_at)}
               </span>
