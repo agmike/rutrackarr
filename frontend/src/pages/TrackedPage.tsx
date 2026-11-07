@@ -123,7 +123,7 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
         <span className="min-w-0 flex-1 truncate font-medium" title={t.title}>
           {t.title}
         </span>
-        <a href={t.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
+        <a href={t.topic_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
           <ExternalLink className="size-3.5" />
         </a>
         <Button size="sm" variant="ghost" title="Check for an update now" onClick={() => check.mutate()} disabled={check.isPending}>

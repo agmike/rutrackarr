@@ -32,7 +32,7 @@ export function ActivityCard() {
                 {e.message}
               </span>
               {e.topic_url && (
-                <a href={e.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
+                <a href={e.topic_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
                   <ExternalLink className="size-3.5" />
                 </a>
               )}

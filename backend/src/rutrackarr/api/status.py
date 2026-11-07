@@ -449,3 +449,28 @@ def tracking(request: Request) -> dict[str, Any]:
         "feeds": [{"forum_id": f} | s for f, s in sorted(tracker.feed_status.items())],
         "auto_track": request.app.state.settings_service.get("tracking.auto_track") == "on",
     }
+
+
+# --- dashboard widget ------------------------------------------------------------------------
+
+
+@router.get("/widget")
+async def widget(request: Request) -> dict[str, Any]:
+    """Flat numbers for a dashboard tile (Homepage's customapi widget): downloads, speeds,
+    tracked topics, queries, RuTracker's state, active alerts."""
+    d = await downloads(request)
+    totals = d.get("totals") or {}
+    t = tracking(request)
+    activity = request.app.state.activity
+    failing = request.app.state.rutracker_store.failing()
+    return {
+        "downloading": totals.get("downloading", 0),
+        "seeding": totals.get("seeding", 0),
+        "dlspeed": totals.get("dlspeed", 0),
+        "upspeed": totals.get("upspeed", 0),
+        "tracked": t["manual"] + t["grabbed"],
+        "updated_7d": t["updated_7d"],
+        "queries_24h": activity.stats(24)["queries"],
+        "rutracker": "failing" if failing else "OK",
+        "alerts": len(request.app.state.alerts.active()),
+    }

@@ -140,3 +140,11 @@ def test_service(api):  # noqa: F811
     s = api.get("/api/status/service").json()
     assert s["uptime_seconds"] >= 0 and s["rutracker"]["per_minute"] == 60
     assert s["queries_24h"]["queries"] == 0
+
+
+def test_widget(api):  # noqa: F811
+    w = api.get("/api/status/widget").json()
+    assert w == {
+        "downloading": 0, "seeding": 0, "dlspeed": 0, "upspeed": 0, "tracked": 0,
+        "updated_7d": 0, "queries_24h": 0, "rutracker": "OK", "alerts": 0,
+    }  # fmt: skip

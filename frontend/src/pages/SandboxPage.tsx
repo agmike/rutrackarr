@@ -207,27 +207,30 @@ function ResultCard({ title, r, form }: { title: string; r: SandboxResult; form:
             const pin = !row.kept ? pinLink(form, row.topic_id, num(form.season)) : null
             return (
               <li key={row.topic_id} className="grid min-w-0 gap-0.5 border-b pb-2 last:border-b-0">
-                <div className="flex min-w-0 items-start gap-2">
+                <div className="flex min-w-0 items-center gap-2">
                   {row.kept ? (
-                    <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                    <CheckCircle2 className="size-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
                   ) : (
-                    <XCircle className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <XCircle className="size-4 shrink-0 text-muted-foreground" />
                   )}
-                  <span className={row.kept ? "min-w-0 flex-1 font-medium break-words" : "min-w-0 flex-1 break-words text-muted-foreground"}>
+                  <span
+                    className={row.kept ? "min-w-0 flex-1 truncate font-medium" : "min-w-0 flex-1 truncate text-muted-foreground"}
+                    title={row.kept ? `${row.release}\n${row.title}` : row.title}
+                  >
                     {row.kept ? row.release : row.title}
                   </span>
                   {row.tracked && <Badge variant="outline">tracked</Badge>}
-                  <TrackButton topic={{ ...row, forum_id: row.forum_id ?? null }} />
+                  <TrackButton compact topic={{ ...row, forum_id: row.forum_id ?? null }} />
                   {pin && (
-                    <Link to={pin} className="shrink-0 text-muted-foreground hover:text-foreground" title="Pin this topic to the series (override)">
+                    <Link to={pin} className="inline-flex shrink-0 text-muted-foreground hover:text-foreground" title="Pin this topic to the series (override)">
                       <Pin className="size-3.5" />
                     </Link>
                   )}
-                  <a href={row.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
+                  <a href={row.topic_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
                     <ExternalLink className="size-3.5" />
                   </a>
                 </div>
-                <div className="pl-6 text-xs text-muted-foreground break-words">
+                <div className="truncate pl-6 text-xs text-muted-foreground" title={row.kept ? row.title : (row.reason ?? "")}>
                   {row.kept ? row.title : <span className="text-amber-600 dark:text-amber-400">{row.reason}</span>}
                 </div>
                 <div className="pl-6 text-xs text-muted-foreground">

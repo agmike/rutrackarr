@@ -144,11 +144,11 @@ function Details({ id, query }: { id: number; query: string }) {
                 {d.release ?? d.title}
               </span>
               {pin && (
-                <Link to={pin} title="Pin this topic to the series" className="shrink-0 text-muted-foreground hover:text-foreground">
+                <Link to={pin} title="Pin this topic to the series" className="inline-flex shrink-0 text-muted-foreground hover:text-foreground">
                   <Pin className="size-3.5" />
                 </Link>
               )}
-              <a href={d.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground">
+              <a href={d.topic_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 text-muted-foreground hover:text-foreground">
                 <ExternalLink className="size-3.5" />
               </a>
             </div>
@@ -201,11 +201,11 @@ function Dropped() {
                     {d.title}
                   </span>
                   {pin && (
-                    <Link to={pin} title="Pin this topic to the series" className="shrink-0 text-muted-foreground hover:text-foreground">
+                    <Link to={pin} title="Pin this topic to the series" className="inline-flex shrink-0 text-muted-foreground hover:text-foreground">
                       <Pin className="size-3.5" />
                     </Link>
                   )}
-                  <a href={d.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground">
+                  <a href={d.topic_url} target="_blank" rel="noreferrer" className="inline-flex shrink-0 text-muted-foreground hover:text-foreground">
                     <ExternalLink className="size-3.5" />
                   </a>
                 </div>
