@@ -71,3 +71,35 @@ def test_unsaved_form_values_are_tested(tmp_path):
     assert seen == {"url": "http://sonarr:8989/sonarr/api/v3/system/status", "key": "saved-key"}
     c.post("/api/arr/sonarr/test", json={"url": "http://sonarr:8989/sonarr", "api_key": "typed"})
     assert seen["key"] == "typed"
+
+
+def test_qbittorrent_unsaved_values_and_login(tmp_path):
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.url.path == "/api/v2/auth/login":
+            seen["login"] = (str(req.url), req.content.decode())
+            ok = b"password=pw" in req.content
+            r = httpx.Response(200, text="Ok." if ok else "Fails.")
+            if ok:
+                r.headers["set-cookie"] = "SID=s1; path=/"
+            return r
+        if req.url.path == "/api/v2/app/version":
+            assert "SID=s1" in req.headers.get("cookie", "")
+            return httpx.Response(200, text="v5.2.4")
+        return httpx.Response(404)
+
+    c = make(tmp_path, handler)
+    assert c.post("/api/arr/qbittorrent/test").status_code == 400  # no URL
+    r = c.post(
+        "/api/arr/qbittorrent/test",
+        json={"url": "http://gluetun:8090/", "username": "admin", "password": "pw"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"app": "qBittorrent", "version": "v5.2.4"}
+    assert seen["login"][0] == "http://gluetun:8090/api/v2/auth/login"
+    r = c.post(
+        "/api/arr/qbittorrent/test",
+        json={"url": "http://gluetun:8090", "username": "admin", "password": "nope"},
+    )
+    assert r.status_code == 502 and "rejected" in r.json()["detail"]
