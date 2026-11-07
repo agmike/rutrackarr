@@ -65,3 +65,14 @@ def test_send_and_test_endpoint(api, monkeypatch):  # noqa: F811
     )
     r = api.post("/api/alerts/test", json={"urls": "tgram://token/chat"})
     assert r.json() == {"status": "sent"} and calls == ["tgram://token/chat"]
+
+
+def test_chores_are_due_right_after_boot(api, net, monkeypatch):  # noqa: F811
+    """Monotonic time starts at boot: on a fresh machine "never ran" must still mean due."""
+    from rutrackarr import background
+
+    assert background.due({}, "x", 5.0, 300) and not background.due({"x": 1.0}, "x", 5.0, 300)
+    monkeypatch.setattr(background.time, "monotonic", lambda: 5.0)
+    net.on("GET", "/health", httpx.Response(500))
+    asyncio.run(background.tick(api.app, {}))
+    assert [a["key"] for a in api.get("/api/alerts").json()["items"]] == ["flaresolverr"]

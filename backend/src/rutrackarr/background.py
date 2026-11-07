@@ -26,6 +26,12 @@ FAILED_SEARCHES = 5  # failed Torznab searches within FAILED_WINDOW raise an ale
 FAILED_WINDOW = 0.25  # hours
 
 
+def due(state: dict[str, float], key: str, now: float, every: float) -> bool:
+    """Never run (whatever the clock says — monotonic time starts at boot), or `every` ago."""
+    last = state.get(key)
+    return last is None or now - last >= every
+
+
 async def tick(app: FastAPI, state: dict[str, float]) -> None:
     """One round: retry RuTracker if it's failing and due; prune the logs if due."""
     now = time.monotonic()
@@ -34,7 +40,7 @@ async def tick(app: FastAPI, state: dict[str, float]) -> None:
     if (
         svc.get("rutracker.username")
         and store.failing()
-        and now - state.get("heartbeat", 0) >= HEARTBEAT_EVERY
+        and due(state, "heartbeat", now, HEARTBEAT_EVERY)
     ):
         state["heartbeat"] = now
         try:
@@ -44,10 +50,10 @@ async def tick(app: FastAPI, state: dict[str, float]) -> None:
         except Exception as e:
             log.warning("heartbeat: %s", e)
     await track_updates(app, state, now)
-    if now - state.get("services", 0) >= SERVICES_EVERY:
+    if due(state, "services", now, SERVICES_EVERY):
         state["services"] = now
         await check_services(app)
-    if now - state.get("prune", 0) >= PRUNE_EVERY:
+    if due(state, "prune", now, PRUNE_EVERY):
         state["prune"] = now
         try:
             app.state.activity.prune(int(svc.get("general.query_log_retention_days") or 30))
@@ -114,7 +120,7 @@ async def track_updates(app: FastAPI, state: dict[str, float], now: float) -> No
     if not app.state.qbit.configured() or not svc.get("rutracker.username"):
         return
     try:
-        if now - state.get("feeds", 0) >= 60 * int(svc.get("tracking.feed_minutes") or 15):
+        if due(state, "feeds", now, 60 * int(svc.get("tracking.feed_minutes") or 15)):
             state["feeds"] = now
             await tracker.poll_feeds()
         for t in tracker.due(limit=2):
