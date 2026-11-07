@@ -78,3 +78,47 @@ def _decode(data: bytes, i: int):  # type: ignore[no-untyped-def]
     except (ValueError, IndexError) as e:
         raise TorrentError(f"broken torrent file: {e}") from e
     raise TorrentError(f"unexpected byte at {i}")
+
+
+MARK_KEY = b"x-rutrackarr"
+
+
+def mark(data: bytes, release: str) -> bytes:
+    """The torrent with the release name added to its info dictionary.
+
+    Changes the info hash, so every release (a whole topic, an episode of it…) is its own
+    download in Sonarr/Radarr; the RuTrackarr download client strips the mark again before the
+    torrent reaches qBittorrent (`unmark`), so the real torrent is the one RuTracker serves."""
+    root, _ = _decode(data, 0)
+    if not isinstance(root, dict) or b"info" not in root:
+        raise TorrentError("not a torrent file")
+    info, (_, stop) = root[b"info"]
+    if not isinstance(info, dict) or data[stop - 1 : stop] != b"e":
+        raise TorrentError("torrent info is not a dictionary")
+    if MARK_KEY in info:
+        data, _ = unmark(data)
+        return mark(data, release)
+    if any(k > MARK_KEY for k in info):  # bencoded keys are sorted: the mark must stay last
+        raise TorrentError("unexpected info keys")
+    value = release.encode("utf-8")
+    entry = _string(MARK_KEY) + _string(value)
+    return data[: stop - 1] + entry + data[stop - 1 :]
+
+
+def unmark(data: bytes) -> tuple[bytes, str | None]:
+    """→ (the torrent as RuTracker served it, the release name), or (data, None) unmarked."""
+    root, _ = _decode(data, 0)
+    if not isinstance(root, dict) or b"info" not in root:
+        raise TorrentError("not a torrent file")
+    info, _ = root[b"info"]
+    if not isinstance(info, dict) or MARK_KEY not in info:
+        return data, None
+    value, (vstart, vstop) = info[MARK_KEY]
+    kstart = vstart - len(_string(MARK_KEY))
+    if data[kstart:vstart] != _string(MARK_KEY) or not isinstance(value, bytes):
+        raise TorrentError("broken RuTrackarr mark")
+    return data[:kstart] + data[vstop:], value.decode("utf-8", errors="replace")
+
+
+def _string(b: bytes) -> bytes:
+    return str(len(b)).encode() + b":" + b

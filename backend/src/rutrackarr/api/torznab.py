@@ -1,11 +1,13 @@
 """Torznab endpoint for Sonarr/Radarr: /torznab/api and /torznab/download/{topic_id}."""
 
 import logging
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Request, Response
 
 from rutrackarr import __version__
 from rutrackarr.releases.companions import find_video, plan
+from rutrackarr.releases.naming import file_tag, tagged
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
 from rutrackarr.rutracker.errors import RuTrackerError
@@ -69,7 +71,10 @@ async def api(request: Request) -> Response:
     return Response(
         feed.results(
             releases,
-            download_url=lambda tid: f"{base}/torznab/download/{tid}?apikey={key}",
+            download_url=lambda rel: (
+                f"{base}/torznab/download/{rel.row.topic_id}?"
+                + urlencode({"apikey": key, "name": rel.name})
+            ),
             topic_url=client.topic_url,
         ),
         media_type=XML,
@@ -77,8 +82,11 @@ async def api(request: Request) -> Response:
 
 
 @router.get("/download/{topic_id}")
-async def download(topic_id: int, request: Request) -> Response:
-    """The .torrent, fetched from RuTracker when asked for and never stored (it has the passkey)."""
+async def download(topic_id: int, request: Request, name: str = "") -> Response:
+    """The .torrent, fetched from RuTracker when asked for and never stored (it has the passkey).
+
+    With the qBittorrent proxy on, marked with the release `name` (see rutrackarr.qbit.proxy):
+    each release is its own download, added through the proxy as the real topic."""
     if not _authorized(request):
         return Response(feed.error(100, "Incorrect API key"), media_type=XML, status_code=401)
     try:
@@ -86,7 +94,14 @@ async def download(topic_id: int, request: Request) -> Response:
     except RuTrackerError as e:
         request.app.state.rutracker_store.record_error(str(e))
         return Response(feed.error(900, f"RuTracker: {e}"), media_type=XML, status_code=502)
-    _remember(request, topic_id, data)
+    release = name.strip() if request.app.state.qbit.configured() else ""
+    if release:
+        try:
+            data = torrent.mark(data, release)
+        except torrent.TorrentError as e:
+            log.warning("topic %s: could not mark the torrent: %s", topic_id, e)
+            release = ""
+    _remember(request, topic_id, data, release or None)
     return Response(
         data,
         media_type="application/x-bittorrent",
@@ -94,7 +109,7 @@ async def download(topic_id: int, request: Request) -> Response:
     )
 
 
-def _remember(request: Request, topic_id: int, data: bytes) -> None:
+def _remember(request: Request, topic_id: int, data: bytes, release: str | None = None) -> None:
     """Keep the info hash and file list (not the torrent) for the import script."""
     try:
         info = torrent.read(data)
@@ -103,7 +118,7 @@ def _remember(request: Request, topic_id: int, data: bytes) -> None:
         return
     row = request.app.state.torznab_cache.find(topic_id)
     request.app.state.downloads.remember(
-        info, topic_id, row.title if row else "", row.forum if row else ""
+        info, topic_id, row.title if row else "", row.forum if row else "", release
     )
 
 
@@ -120,11 +135,15 @@ def companions(request: Request, hash: str = "", source: str = "") -> Response:
     download = request.app.state.downloads.get(hash)
     if download is None:
         return Response("Not a RuTrackarr download\n", media_type="text/plain", status_code=404)
-    video = find_video(download.files, source)
-    if video is None:
+    # Added through the qBittorrent proxy: video files carry the release's tag on disk.
+    tag = file_tag(download.release) if download.release and download.real_hash else None
+    on_disk = {tagged(f, tag) if tag else f: f for f in download.files}
+    found = find_video(list(on_disk), source)
+    if found is None:
         return Response("Video not in this torrent\n", media_type="text/plain", status_code=404)
+    video = on_disk[found]
     title = parse_title(download.title) if download.title else None
-    lines = [f"#video\t{video}"] + [
+    lines = [f"#video\t{found}"] + [
         f"{c.path}\t{c.suffix}" for c in plan(download.files, video, title)
     ]
     return Response("\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")

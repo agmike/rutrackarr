@@ -223,3 +223,25 @@ def release_name(
     parts += language_tokens(t, verdict, original_language)
     name = " ".join(p for p in parts if p)
     return f"{' '.join(name.split())} -RuTracker"
+
+
+_FILE_TOKENS = re.compile(
+    r"\b(?:OrigAudio|NoDialogue|OrigSubs|Rus(?:Dub|MVO|DVO|AVO|VO|Voice|Subs)"
+    r"|Eng(?:Voice|Subs)|RTA-T\d)\b"
+)
+VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".wmv", ".mov", ".webm"}
+
+
+def file_tag(release: str) -> str:
+    """The part of a release name that video files get too, so Sonarr/Radarr score an imported
+    file as they scored the grab: "… OrigAudio RusSubs RTA-T1 -RuTracker" → that tail."""
+    return " ".join([*dict.fromkeys(_FILE_TOKENS.findall(release)), "-RuTracker"])
+
+
+def tagged(path: str, tag: str) -> str:
+    """ "Show/Ep 01.mkv" → "Show/Ep 01 <tag>.mkv" (video files only, at most once)."""
+    head, sep, name = path.rpartition("/")
+    stem, dot, ext = name.rpartition(".")
+    if not dot or f".{ext.lower()}" not in VIDEO_EXTS or stem.endswith(f" {tag}"):
+        return path
+    return f"{head}{sep}{stem} {tag}.{ext}"

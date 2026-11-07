@@ -49,6 +49,12 @@ class DownloadRow(Base):
     forum: Mapped[str] = mapped_column(Text, nullable=False)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     files: Mapped[str] = mapped_column(Text, nullable=False)  # JSON [[path, size], ...]
+    # Served marked (the download client proxy is on): the release name in the mark, and once
+    # Sonarr/Radarr added it through the proxy, the real torrent's hash and their category.
+    release: Mapped[str | None] = mapped_column(Text, nullable=True)
+    real_hash: Mapped[str | None] = mapped_column(String(40), nullable=True, index=True)
+    category: Mapped[str | None] = mapped_column(Text, nullable=True)
+    added_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

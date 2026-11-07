@@ -19,6 +19,8 @@ from rutrackarr.metadata.cache import MetadataCache
 from rutrackarr.metadata.shikimori import Shikimori
 from rutrackarr.metadata.sonarr import RadarrTitles, SonarrTitles
 from rutrackarr.metadata.tmdb import Tmdb
+from rutrackarr.qbit import proxy as qbit_proxy
+from rutrackarr.qbit.upstream import Qbit
 from rutrackarr.rutracker.client import RuTrackerClient
 from rutrackarr.rutracker.http import RuTrackerHttp
 from rutrackarr.rutracker.ratelimit import RequestSpacer
@@ -70,6 +72,11 @@ def create_app(
     )
 
     app.state.downloads = DownloadStore(sessions)
+    app.state.qbit = Qbit(
+        lambda: svc.get("qbittorrent.url"),
+        lambda: (svc.get("qbittorrent.username"), svc.get("qbittorrent.password")),
+        transport,
+    )
     ua = f"RuTrackarr/{__version__} (+https://github.com/agmike/rutrackarr)"
     app.state.resolver = Resolver(
         AnimeList(settings.data_dir / "anime-list.json", transport, user_agent=ua),
@@ -86,6 +93,7 @@ def create_app(
     )
 
     app.include_router(torznab_api.router, prefix=f"{base}/torznab")
+    app.include_router(qbit_proxy.router, prefix=f"{base}/qbit")
     app.include_router(system.router, prefix=f"{base}/api")
     app.include_router(settings_api.router, prefix=f"{base}/api")
     app.include_router(rutracker_api.router, prefix=f"{base}/api")
@@ -101,7 +109,7 @@ def create_app(
 
         @app.get(f"{base}/{{path:path}}", include_in_schema=False, response_model=None)
         async def spa(path: str) -> FileResponse | HTMLResponse:
-            if path.startswith(("api/", "torznab/")):
+            if path.startswith(("api/", "torznab/", "qbit/")):
                 return HTMLResponse("Not Found", status_code=404)
             candidate = (static / path).resolve()
             if path and candidate.is_file() and static.resolve() in candidate.parents:

@@ -49,7 +49,7 @@ def results(releases: list[Release], download_url, topic_url) -> bytes:  # type:
         row = rel.row
         item = ET.SubElement(channel, "item")
         ET.SubElement(item, "title").text = rel.name
-        topic, link = topic_url(row.topic_id), download_url(row.topic_id)
+        topic, link = topic_url(row.topic_id), download_url(rel)
         ET.SubElement(item, "guid", isPermaLink="true").text = topic
         ET.SubElement(item, "comments").text = topic
         ET.SubElement(item, "link").text = link

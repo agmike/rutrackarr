@@ -41,6 +41,26 @@ browser fetch that page instead (and keeps doing so for a while). Note: through 
 the login form is submitted as UTF-8, so a RuTracker username or password with non-Latin
 characters may not work while requests go through FlareSolverr.
 
+### Download client (optional, recommended for Sonarr)
+
+Sonarr scores a grab by its release title but an import by the file names, and RuTracker file
+names say nothing about the voice-over or subtitles — so a release that won the search can
+score low, or be rejected, on import. RuTrackarr can stand in front of your qBittorrent:
+
+1. In RuTrackarr → Settings → *Download client*, enter the qBittorrent Web UI URL and login.
+2. In Sonarr/Radarr add a **qBittorrent** download client: host and port of RuTrackarr, URL
+   base `<RuTrackarr URL base>/qbit` (e.g. `/rutrackarr/qbit`), any username, the RuTrackarr
+   **API key as password**, and a category of its own (e.g. `sonarr-rutracker`; give it the
+   same save path as your usual category in qBittorrent).
+3. Edit the RuTrackarr indexer and select that download client.
+
+Torrents grabbed from RuTrackarr then go through it: the topic is added to qBittorrent
+stopped, its video files get the release's language tags appended (`… OrigAudio RusSubs
+RTA-T1 -RuTracker.mkv`), and then it starts. Everything else is passed through unchanged.
+Each grab is its own download in Sonarr (several grabs of one topic share one torrent), and
+finished downloads are reported as still seeding, so files are hardlinked or copied, never
+moved away from a torrent that keeps seeding.
+
 ## Security
 
 **RuTrackarr has no built-in login.** Anyone who can reach its web UI can read and change

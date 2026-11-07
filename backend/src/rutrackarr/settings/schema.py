@@ -33,6 +33,11 @@ FIELDS: dict[str, FieldDef] = {
     "sonarr.api_key": FieldDef("secret"),
     "radarr.url": FieldDef("url", "http://radarr:7878"),
     "radarr.api_key": FieldDef("secret"),
+    # Download client: qBittorrent behind RuTrackarr's qBittorrent-compatible proxy (empty URL:
+    # off — .torrent files are served as RuTracker sends them)
+    "qbittorrent.url": FieldDef("url", ""),
+    "qbittorrent.username": FieldDef("string", "admin"),
+    "qbittorrent.password": FieldDef("secret"),
     # General
     "general.query_log_retention_days": FieldDef("int", 30, minimum=1, maximum=365),
 }

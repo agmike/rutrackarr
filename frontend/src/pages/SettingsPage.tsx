@@ -1,6 +1,11 @@
 import { useQuery } from "@tanstack/react-query"
 import { ApiKeyCard } from "@/components/ApiKeyCard"
-import { ArrConnectionTests, FlareSolverrTest, RuTrackerSessionPanel } from "@/components/RuTrackerSessionPanel"
+import {
+  ArrConnectionTests,
+  FlareSolverrTest,
+  QbittorrentTest,
+  RuTrackerSessionPanel,
+} from "@/components/RuTrackerSessionPanel"
 import { type FieldSpec, SettingsSection } from "@/components/SettingsSection"
 import { api, type SettingsView } from "@/lib/api"
 
@@ -62,6 +67,18 @@ const arr: FieldSpec[] = [
   { key: "radarr.api_key", label: "Radarr API key", type: "secret" },
 ]
 
+const qbittorrent: FieldSpec[] = [
+  {
+    key: "qbittorrent.url",
+    label: "qBittorrent URL",
+    type: "url",
+    placeholder: "http://qbittorrent:8080",
+    help: "The real qBittorrent Web UI. Leave empty to serve RuTracker's .torrent files unchanged.",
+  },
+  { key: "qbittorrent.username", label: "Username", type: "text" },
+  { key: "qbittorrent.password", label: "Password", type: "secret" },
+]
+
 const general: FieldSpec[] = [
   { key: "general.query_log_retention_days", label: "Keep query log for (days)", type: "number" },
 ]
@@ -109,6 +126,16 @@ export function SettingsPage() {
           view={data}
         >
           {(pending) => <ArrConnectionTests pending={pending} />}
+        </SettingsSection>
+      </section>
+      <section id="download-client">
+        <SettingsSection
+          title="Download client"
+          description="RuTrackarr as a qBittorrent for Sonarr and Radarr: RuTracker topics are added to the real qBittorrent with their video files renamed to carry the release's language tags, so imported files score like the grab. In Sonarr/Radarr add a qBittorrent download client with host and port of RuTrackarr, URL base <url base>/qbit, any username, the RuTrackarr API key as password, and its own category (e.g. sonarr-rutracker); then pick it as the RuTrackarr indexer's download client."
+          fields={qbittorrent}
+          view={data}
+        >
+          {(pending) => <QbittorrentTest pending={pending} />}
         </SettingsSection>
       </section>
       <section id="general">
