@@ -32,3 +32,11 @@ def test_spa_without_url_base(tmp_path):
     settings = BootstrapSettings(static_dir=_static(tmp_path / "s"), data_dir=tmp_path / "d")
     client = TestClient(create_app(settings))
     assert '<base href="/" />' in client.get("/").text
+
+
+def test_index_is_revalidated(tmp_path, make_client):
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "index.html").write_text('<html><head><base href="/" /></head></html>')
+    client = make_client(static_dir=static)
+    assert client.get("/settings").headers["cache-control"] == "no-cache"

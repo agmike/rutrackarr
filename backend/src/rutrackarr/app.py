@@ -156,6 +156,7 @@ def create_app(
             candidate = (static / path).resolve()
             if path and candidate.is_file() and static.resolve() in candidate.parents:
                 return FileResponse(candidate)
-            return HTMLResponse(index_html)
+            # Revalidated on every load: a deploy changes which hashed assets it points to.
+            return HTMLResponse(index_html, headers={"Cache-Control": "no-cache"})
 
     return app
