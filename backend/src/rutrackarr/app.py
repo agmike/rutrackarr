@@ -97,8 +97,8 @@ def create_app(
     app.state.downloads = DownloadStore(sessions)
     app.state.overrides = OverrideStore(sessions)
     app.state.qbit = Qbit(
-        lambda: svc.get("qbittorrent.url"),
-        lambda: (svc.get("qbittorrent.username"), svc.get("qbittorrent.password")),
+        lambda: svc.qbittorrent_target()[0],
+        lambda: svc.qbittorrent_target()[1:],
         transport,
     )
     ua = f"RuTrackarr/{__version__} (+https://github.com/agmike/rutrackarr)"

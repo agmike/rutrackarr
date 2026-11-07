@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 from typing import Literal
 
-Kind = Literal["string", "url", "int", "secret"]
+Kind = Literal["string", "url", "int", "secret", "choice"]
 
 
 @dataclass(frozen=True)
@@ -13,6 +13,7 @@ class FieldDef:
     minimum: int | None = None
     maximum: int | None = None
     url: bool = False  # a secret that must be an http(s) URL
+    choices: tuple[str, ...] = ()  # kind "choice"
 
 
 FIELDS: dict[str, FieldDef] = {
@@ -36,10 +37,14 @@ FIELDS: dict[str, FieldDef] = {
     "radarr.api_key": FieldDef("secret"),
     # Download client: qBittorrent behind RuTrackarr's qBittorrent-compatible proxy (empty URL:
     # off — .torrent files are served as RuTracker sends them)
-    # A secret: behind qui it's a client-proxy URL whose path is the access token.
-    "qbittorrent.url": FieldDef("secret", url=True),
+    # Either qBittorrent's own Web UI (URL + login), or qui's client proxy (qui URL + a proxy
+    # token, used as <qui URL>/proxy/<token>, no login).
+    "qbittorrent.mode": FieldDef("choice", "qbittorrent", choices=("qbittorrent", "qui")),
+    "qbittorrent.url": FieldDef("url", ""),
     "qbittorrent.username": FieldDef("string", "admin"),
     "qbittorrent.password": FieldDef("secret"),
+    "qui.url": FieldDef("url", ""),
+    "qui.token": FieldDef("secret"),
     # Alerts: Apprise URLs (space- or comma-separated), e.g. tgram://<bot token>/<chat id>
     "alerts.apprise_urls": FieldDef("secret"),
     # General

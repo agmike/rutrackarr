@@ -17,40 +17,55 @@ class ArrTest(BaseModel):
 
 
 class QbitTest(BaseModel):
+    """Values entered but not saved yet; missing ones fall back to the saved settings."""
+
+    mode: str | None = None
     url: str | None = None
     username: str | None = None
     password: str | None = None
+    qui_url: str | None = None
+    qui_token: str | None = None
 
 
 @router.post("/qbittorrent/test")
 async def test_qbittorrent(request: Request, body: QbitTest | None = None) -> dict[str, str]:
-    """Log in to the qBittorrent behind the download client proxy (unsaved values first)."""
+    """Reach the qBittorrent behind the download client proxy: log in (qBittorrent mode) or go
+    through qui's client proxy (no login), then ask its version."""
     svc = request.app.state.settings_service
-    body = body or QbitTest()
-    url = str(body.url or svc.get("qbittorrent.url") or "").strip().rstrip("/")
+    b = body or QbitTest()
+    url, user, password = svc.qbittorrent_target(
+        qbittorrent_mode=b.mode, qbittorrent_url=b.url, qbittorrent_username=b.username,
+        qbittorrent_password=b.password, qui_url=b.qui_url, qui_token=b.qui_token,
+    )  # fmt: skip
     if not url:
-        raise HTTPException(status_code=400, detail="qBittorrent URL is not set")
-    user = body.username if body.username is not None else svc.get("qbittorrent.username")
-    password = body.password or svc.get("qbittorrent.password")
+        raise HTTPException(status_code=400, detail="Download client URL (or qui token) not set")
+    url = url.rstrip("/")
     try:
         async with httpx.AsyncClient(
             timeout=10, transport=request.app.state.http_transport
         ) as client:
-            r = await client.post(
-                f"{url}/api/v2/auth/login",
-                data={"username": user or "", "password": password or ""},
-            )
-            # qBittorrent < 5.2: 200 "Ok." / 200 "Fails."; 5.2+: 204 / 401.
-            if r.text.strip() == "Fails." or r.status_code in (401, 403):
-                raise HTTPException(status_code=502, detail="qBittorrent rejected the login")
-            if r.status_code not in (200, 204):
-                raise HTTPException(
-                    status_code=502, detail=f"qBittorrent answered HTTP {r.status_code}"
+            if user or password:
+                r = await client.post(
+                    f"{url}/api/v2/auth/login",
+                    data={"username": user or "", "password": password or ""},
                 )
-            client.cookies = r.cookies
+                # qBittorrent < 5.2: 200 "Ok." / 200 "Fails."; 5.2+: 204 / 401.
+                if r.text.strip() == "Fails." or r.status_code in (401, 403):
+                    raise HTTPException(status_code=502, detail="qBittorrent rejected the login")
+                if r.status_code not in (200, 204):
+                    raise HTTPException(
+                        status_code=502, detail=f"qBittorrent answered HTTP {r.status_code}"
+                    )
+                client.cookies = r.cookies
             v = await client.get(f"{url}/api/v2/app/version")
     except httpx.HTTPError as e:
         raise HTTPException(status_code=502, detail=f"qBittorrent unreachable: {e}") from None
+    if v.status_code in (401, 403, 404):
+        raise HTTPException(
+            status_code=502,
+            detail=f"HTTP {v.status_code} — "
+            + ("check the qui URL and token" if not user else "check the login"),
+        )
     return {"app": "qBittorrent", "version": v.text.strip() if v.status_code == 200 else "?"}
 
 

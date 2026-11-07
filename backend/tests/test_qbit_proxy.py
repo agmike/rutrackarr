@@ -344,3 +344,39 @@ def test_topic_follows_releases_to_post_import_category(api, net, qbit):  # noqa
     assert qbit.torrents[real]["category"] == CATEGORY
     items = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
     assert [t["name"] for t in items] == [RELEASE.replace("S01", "S01E03")]
+
+
+def test_qui_mode_goes_through_the_proxy_without_login(api, net):  # noqa: F811
+    calls = []
+
+    def version(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, text="v5.2.4")
+
+    net.on("GET", "/proxy/tok123/api/v2/app/version", version)
+    net.on(
+        "POST",
+        "/proxy/tok123/api/v2/auth/login",
+        lambda r: calls.append("login") or httpx.Response(204),
+    )
+    api.put(
+        "/api/settings",
+        json={
+            "values": {
+                "qbittorrent.mode": "qui",
+                "qui.url": "http://qui:7476/",
+                "qui.token": "tok123",
+            }
+        },
+    )
+    assert api.post("/api/arr/qbittorrent/test").json() == {
+        "app": "qBittorrent",
+        "version": "v5.2.4",
+    }
+    r = api.get("/api/status/connections", params={"refresh": "true"}).json()
+    assert next(c for c in r["items"] if c["id"] == "qbittorrent")["state"] == "ok"
+    assert "login" not in calls and calls  # no qBittorrent login through qui
+    # Unsaved values from the form win.
+    net.on("GET", "/proxy/other/api/v2/app/version", httpx.Response(403))
+    bad = api.post("/api/arr/qbittorrent/test", json={"qui_token": "other"})
+    assert bad.status_code == 502 and "qui URL and token" in bad.json()["detail"]

@@ -39,6 +39,8 @@ def _validate(key: str, field: FieldDef, raw: Any) -> str:
     if not isinstance(raw, str):
         raise ValueError("must be text")
     value = raw.strip()
+    if field.kind == "choice" and value not in field.choices:
+        raise ValueError(f"must be one of: {', '.join(field.choices)}")
     if (field.kind == "url" or field.url) and value:
         parsed = urlparse(value)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
@@ -51,16 +53,54 @@ class SettingsService:
         self._sessions = sessions
         self._box = box
         self._pinned_api_key = (pinned_api_key or "").strip() or None
-        self._encrypt_new_secrets()
+        self._upgrade()
 
-    def _encrypt_new_secrets(self) -> None:
-        """Settings that became secrets (e.g. the qBittorrent URL) are encrypted in place."""
+    def _upgrade(self) -> None:
+        """Bring stored settings in line with the definitions: values that became secrets are
+        encrypted, ones that stopped being secrets decrypted; a qui client-proxy URL saved as
+        the qBittorrent URL (v0.10.1) becomes qui URL + token."""
+        now = datetime.now(UTC)
         with self._sessions.begin() as s:
-            for row in s.scalars(select(SettingRow)):
+            rows = {r.key: r for r in s.scalars(select(SettingRow))}
+            for row in rows.values():
                 field = FIELDS.get(row.key)
-                if field is not None and field.kind == "secret" and not row.is_secret:
-                    row.value = self._box.encrypt(row.value) if row.value else row.value
-                    row.is_secret = True
+                if field is None or not row.value:
+                    continue
+                if field.kind == "secret" and not row.is_secret:
+                    row.value, row.is_secret = self._box.encrypt(row.value), True
+                elif field.kind != "secret" and row.is_secret and row.key != API_KEY:
+                    row.value, row.is_secret = self._box.decrypt(row.value) or "", False
+            url = rows.get("qbittorrent.url")
+            if url is not None and "/proxy/" in url.value and "qui.url" not in rows:
+                base, _, token = url.value.partition("/proxy/")
+                token = token.strip("/")
+                values = {"qui.url": base, "qbittorrent.mode": "qui", "qbittorrent.url": ""}
+                for key, value in values.items():
+                    row = rows.get(key) or SettingRow(key=key, updated_at=now)
+                    row.value, row.is_secret, row.updated_at = value, False, now
+                    s.add(row)
+                s.add(SettingRow(key="qui.token", value=self._box.encrypt(token), is_secret=True,
+                                 updated_at=now))  # fmt: skip
+
+    def qbittorrent_target(
+        self, **pending: str | None
+    ) -> tuple[str | None, str | None, str | None]:
+        """(Web API base URL, username, password) of the download client's qBittorrent; no
+        login (None, None) through qui's client proxy. `pending`: unsaved form values by setting
+        key with "." replaced by "_" (qbittorrent_mode, qui_url, qui_token…)."""
+
+        def val(key: str) -> str:
+            v = pending.get(key.replace(".", "_"))
+            return str(v if v not in (None, "") else (self.get(key) or "")).strip()
+
+        if val("qbittorrent.mode") == "qui":
+            base, token = val("qui.url").rstrip("/"), val("qui.token").strip("/")
+            return (f"{base}/proxy/{token}" if base and token else None), None, None
+        return (
+            (val("qbittorrent.url") or None),
+            val("qbittorrent.username"),
+            val("qbittorrent.password"),
+        )
 
     # --- reading ---------------------------------------------------------------
     def _rows(self) -> dict[str, SettingRow]:

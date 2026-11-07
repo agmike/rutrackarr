@@ -68,16 +68,43 @@ const arr: FieldSpec[] = [
   { key: "radarr.api_key", label: "Radarr API key", type: "secret" },
 ]
 
+const isQui = (v: Record<string, string>) => v["qbittorrent.mode"] === "qui"
 const qbittorrent: FieldSpec[] = [
+  {
+    key: "qbittorrent.mode",
+    label: "Connect through",
+    type: "select",
+    options: [
+      { value: "qbittorrent", label: "qBittorrent Web UI (URL + login)" },
+      { value: "qui", label: "qui client proxy (qui URL + proxy token)" },
+    ],
+  },
   {
     key: "qbittorrent.url",
     label: "qBittorrent URL",
-    type: "secret",
-    placeholder: "http://qbittorrent:8080 or http://qui:7476/proxy/<token>",
-    help: "The real qBittorrent Web UI, or a qui client-proxy URL (its path is the access token, so the URL is stored like a password and never shown again). Leave empty to serve RuTracker's .torrent files unchanged.",
+    type: "url",
+    placeholder: "http://qbittorrent:8080",
+    help: "qBittorrent's Web UI. Leave empty to serve RuTracker's .torrent files unchanged.",
+    showIf: (v) => !isQui(v),
   },
-  { key: "qbittorrent.username", label: "Username", type: "text" },
-  { key: "qbittorrent.password", label: "Password", type: "secret" },
+  { key: "qbittorrent.username", label: "Username", type: "text", showIf: (v) => !isQui(v) },
+  { key: "qbittorrent.password", label: "Password", type: "secret", showIf: (v) => !isQui(v) },
+  {
+    key: "qui.url",
+    label: "qui URL",
+    type: "url",
+    placeholder: "http://qui:7476",
+    help: "Where RuTrackarr reaches qui (no /proxy/… part).",
+    showIf: isQui,
+  },
+  {
+    key: "qui.token",
+    label: "Proxy token",
+    type: "secret",
+    placeholder: "The part after /proxy/ of the client-proxy URL qui shows",
+    help: "Create a client proxy for RuTrackarr in qui; its URL ends in /proxy/<token>. Kept like a password.",
+    showIf: isQui,
+  },
 ]
 
 const alerts: FieldSpec[] = [
@@ -152,11 +179,24 @@ export function SettingsPage() {
       <section id="download-client">
         <SettingsSection
           title="Download client"
-          description="RuTrackarr as a qBittorrent for Sonarr and Radarr: RuTracker topics are added to the real qBittorrent with their video files renamed to carry the release's language tags, so imported files score like the grab. In Sonarr/Radarr add a qBittorrent download client with host and port of RuTrackarr, URL base <url base>/qbit, any username, the RuTrackarr API key as password, and its own category (e.g. sonarr-rutracker); then pick it as the RuTrackarr indexer's download client."
+          description="RuTrackarr as a qBittorrent for Sonarr and Radarr: RuTracker topics are added to the real qBittorrent with their video files renamed to carry the release's language tags, so imported files score like the grab. In Sonarr/Radarr add a qBittorrent download client with host and port of RuTrackarr, URL base <url base>/qbit, the RuTrackarr API key in its API key field (username empty), and a category of its own that isn't a parent or child of another client's (e.g. sonarr/rutracker next to sonarr/default); then pick it as the RuTrackarr indexer's download client."
           fields={qbittorrent}
           view={data}
         >
-          {(pending) => <QbittorrentTest pending={pending} />}
+          {(pending) => (
+            <div className="grid gap-3">
+              {pending["qbittorrent.mode"] === "qui" && (
+                <p className="text-sm text-muted-foreground">
+                  RuTrackarr uses{" "}
+                  <code className="break-all">
+                    {(pending["qui.url"] || "http://qui:7476").replace(/\/+$/, "")}/proxy/
+                    {pending["qui.token"] || data.secrets["qui.token"] ? "••••••••" : "<token>"}
+                  </code>
+                </p>
+              )}
+              <QbittorrentTest pending={pending} />
+            </div>
+          )}
         </SettingsSection>
       </section>
       <section id="alerts">

@@ -144,9 +144,12 @@ export function QbittorrentTest({ pending }: { pending: Record<string, string> }
   const test = useMutation({
     mutationFn: () =>
       api.post<{ app: string; version: string }>("arr/qbittorrent/test", {
+        mode: pending["qbittorrent.mode"] || null,
         url: pending["qbittorrent.url"] || null,
         username: pending["qbittorrent.username"] ?? null,
         password: pending["qbittorrent.password"] || null,
+        qui_url: pending["qui.url"] || null,
+        qui_token: pending["qui.token"] || null,
       }),
     onSuccess: (r) => toast.success(`${r.app} reachable (version ${r.version})`),
     onError: (e) => toast.error(errorMessage(e)),

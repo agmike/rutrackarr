@@ -76,18 +76,36 @@ def test_settings_survive_restart(make_client):
     assert make_client().get("/api/settings").json()["secrets"]["rutracker.password"] is True
 
 
-def test_qbittorrent_url_is_a_secret_url(client):
-    bad = client.put("/api/settings", json={"values": {"qbittorrent.url": "qui:7476/proxy/x"}})
+def test_qui_mode_keeps_only_the_token_secret(client):
+    bad = client.put("/api/settings", json={"values": {"qbittorrent.mode": "other"}})
     assert bad.status_code == 422
-    url = "http://qui:7476/proxy/0123456789abcdef"
-    assert client.put("/api/settings", json={"values": {"qbittorrent.url": url}}).status_code == 200
+    r = client.put(
+        "/api/settings",
+        json={
+            "values": {
+                "qbittorrent.mode": "qui",
+                "qui.url": "http://qui:7476",
+                "qui.token": "0123abcd",
+            }
+        },
+    )
+    assert r.status_code == 200
     view = client.get("/api/settings").json()
-    assert "qbittorrent.url" not in view["values"] and view["secrets"]["qbittorrent.url"] is True
-    assert "0123456789abcdef" not in client.get("/api/settings").text
-    assert client.app.state.settings_service.get("qbittorrent.url") == url
+    assert view["values"]["qui.url"] == "http://qui:7476" and view["secrets"]["qui.token"] is True
+    assert "0123abcd" not in client.get("/api/settings").text
+    svc = client.app.state.settings_service
+    assert svc.qbittorrent_target() == ("http://qui:7476/proxy/0123abcd", None, None)
+    client.put(
+        "/api/settings",
+        json={
+            "values": {"qbittorrent.mode": "qbittorrent", "qbittorrent.url": "http://gluetun:8090"}
+        },
+    )
+    assert svc.qbittorrent_target()[0] == "http://gluetun:8090"
 
 
-def test_plaintext_setting_becomes_encrypted_on_start(tmp_path):
+def _stored(tmp_path, key, value, *, encrypt=False):
+    """Start an app, store a setting as an older version did, start again."""
     from datetime import UTC, datetime
 
     from rutrackarr.app import create_app
@@ -96,12 +114,22 @@ def test_plaintext_setting_becomes_encrypted_on_start(tmp_path):
 
     settings = BootstrapSettings(data_dir=tmp_path / "d", static_dir=tmp_path / "s")
     app = create_app(settings)
-    sessions = app.state.settings_service._sessions
-    with sessions.begin() as s:  # as stored by v0.10 and earlier
-        s.add(SettingRow(key="qbittorrent.url", value="http://gluetun:8090", is_secret=False,
-                         updated_at=datetime.now(UTC)))  # fmt: skip
-    app = create_app(settings)
-    with sessions() as s:
-        row = s.get(SettingRow, "qbittorrent.url")
-        assert row.is_secret and "gluetun" not in row.value
-    assert app.state.settings_service.get("qbittorrent.url") == "http://gluetun:8090"
+    svc = app.state.settings_service
+    with svc._sessions.begin() as s:
+        s.add(SettingRow(key=key, value=svc._box.encrypt(value) if encrypt else value,
+                         is_secret=encrypt, updated_at=datetime.now(UTC)))  # fmt: skip
+    return create_app(settings).state.settings_service
+
+
+def test_upgrade_splits_a_saved_qui_proxy_url(tmp_path):
+    # v0.10.1 kept the whole URL as a secret.
+    svc = _stored(tmp_path, "qbittorrent.url", "http://qui:7476/proxy/0123abcd", encrypt=True)
+    assert svc.get("qbittorrent.mode") == "qui" and svc.get("qui.url") == "http://qui:7476"
+    assert svc.get("qui.token") == "0123abcd" and not svc.get("qbittorrent.url")
+    assert svc.qbittorrent_target() == ("http://qui:7476/proxy/0123abcd", None, None)
+
+
+def test_upgrade_keeps_a_plain_qbittorrent_url(tmp_path):
+    svc = _stored(tmp_path, "qbittorrent.url", "http://gluetun:8090", encrypt=True)
+    assert svc.get("qbittorrent.mode") == "qbittorrent"
+    assert svc.public_view()["values"]["qbittorrent.url"] == "http://gluetun:8090"

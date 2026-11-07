@@ -36,6 +36,9 @@ class Qbit:
 
     async def _login(self) -> None:
         user, password = self._credentials()
+        if not user and not password:  # qui's client proxy: no login (as Sonarr does)
+            self._cookies = httpx.Cookies()
+            return
         async with self._client() as c:
             try:
                 r = await c.post(

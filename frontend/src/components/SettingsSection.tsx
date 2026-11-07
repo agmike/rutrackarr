@@ -11,9 +11,12 @@ import { api, fieldErrors, type SettingsView } from "@/lib/api"
 export type FieldSpec = {
   key: string
   label: string
-  type: "text" | "url" | "number" | "secret"
+  type: "text" | "url" | "number" | "secret" | "select"
   help?: ReactNode
   placeholder?: string
+  options?: { value: string; label: string }[] // type "select"
+  /** Shown only when this returns true for the current (unsaved) values. */
+  showIf?: (values: Record<string, string>) => boolean
 }
 
 type SecretChange = { set: string } | { clear: true }
@@ -79,7 +82,7 @@ export function SettingsSection({
         {description && <CardDescription>{description}</CardDescription>}
       </CardHeader>
       <CardContent className="grid gap-4">
-        {fields.map((f) => (
+        {fields.filter((f) => !f.showIf || f.showIf(values)).map((f) => (
           <div key={f.key} className="grid gap-1.5">
             <div className="flex items-center gap-2">
               <Label htmlFor={f.key}>{f.label}</Label>
@@ -102,6 +105,20 @@ export function SettingsSection({
                   </Button>
                 )}
               </div>
+            ) : f.type === "select" ? (
+              <select
+                id={f.key}
+                className="h-9 rounded-md border bg-transparent px-2 text-sm"
+                value={values[f.key] ?? ""}
+                onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
+                aria-invalid={!!errors[f.key]}
+              >
+                {f.options?.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
             ) : (
               <Input
                 id={f.key}
