@@ -163,5 +163,20 @@
         }
       }
     ]
+  },
+  {
+    "name": "RuTrackarr · QC subsection",
+    "includeCustomFormatWhenRenaming": false,
+    "specifications": [
+      {
+        "name": "RTA-QC",
+        "implementation": "ReleaseTitleSpecification",
+        "negate": false,
+        "required": true,
+        "fields": {
+          "value": "\\bRTA-QC\\b"
+        }
+      }
+    ]
   }
 ]

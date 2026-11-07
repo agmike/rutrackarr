@@ -14,8 +14,10 @@ to that series/film and season.
 """
 
 import logging
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -27,7 +29,7 @@ from rutrackarr.db.models import TrackedRow
 from rutrackarr.qbit import topics
 from rutrackarr.qbit.upstream import Qbit
 from rutrackarr.releases.language import assess
-from rutrackarr.releases.naming import file_tag, release_name
+from rutrackarr.releases.naming import file_tag, release_name, tagged
 from rutrackarr.releases.sections import classify
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
@@ -100,6 +102,9 @@ class Tracker:
         self._sessions, self._qbit, self._activity = sessions, qbit, activity
         self._downloads, self._settings, self._client = downloads, settings, client
         self._transport = transport
+        # Search rows by topic id (the Torznab result cache): section and size of a grab.
+        self.find_row: Callable[[int], SearchRow | None] = lambda _topic_id: None
+        self.spacer: Any = None  # RuTracker request spacing (feeds count against the budget)
 
     # --- reading -------------------------------------------------------------------------------
 
@@ -164,9 +169,11 @@ class Tracker:
         existing = self.get(download.topic_id)
         if existing is not None and existing.state == "active":
             return
+        row = self.find_row(download.topic_id)
         self._save(
             topic_id=download.topic_id, title=download.title or download.name,
-            forum=download.forum, forum_id=None, size=0, seeders=0,
+            forum=download.forum, forum_id=row.forum_id if row else None,
+            size=row.size if row else 0, seeders=row.seeders if row else 0,
             info_hash=rhash.upper(), source="grab", state="active",
             content_kind=download.content_kind, content_id=download.content_id,
             season=download.season, content_title=download.release, error=None,
@@ -274,6 +281,148 @@ class Tracker:
         )  # fmt: skip
         return notes
 
+    # --- updates -------------------------------------------------------------------------------
+
+    async def poll_feeds(self) -> int:
+        """Read the feed of every section with tracked topics; check the topics it lists as
+        changed since their last check. → topics checked."""
+        by_forum: dict[int, list[Tracked]] = {}
+        for t in self.all(include_gone=False):
+            if t.forum_id:
+                by_forum.setdefault(t.forum_id, []).append(t)
+        checked = 0
+        async with httpx.AsyncClient(
+            timeout=30, transport=self._transport, follow_redirects=True
+        ) as c:
+            for forum_id, tracked in by_forum.items():
+                if self.spacer is not None:
+                    await self.spacer.wait()
+                try:
+                    r = await c.get(FEED_URL.format(forum_id=forum_id))
+                    entries = feed_entries(r.text) if r.status_code == 200 else {}
+                except httpx.HTTPError as e:
+                    log.warning("feed %s: %s", forum_id, e)
+                    continue
+                for t in tracked:
+                    if t.topic_id not in entries:
+                        continue
+                    when = entries[t.topic_id]
+                    if t.last_checked_at and when and when <= t.last_checked_at:
+                        continue
+                    await self.check(t.topic_id)
+                    checked += 1
+        return checked
+
+    def due(self, limit: int = 2) -> list[Tracked]:
+        """Topics whose slow per-topic check is due: ongoing ones every `tracking.check_hours`,
+        finished ones a week as rarely; never-checked ones first."""
+        hours = int(self._settings.get("tracking.check_hours") or 24)
+        now = datetime.now(UTC)
+        due = []
+        for t in self.all(include_gone=False):
+            every = timedelta(hours=hours * (1 if ongoing(t.title) else COMPLETE_CHECK_FACTOR))
+            if t.last_checked_at is None or now - t.last_checked_at >= every:
+                due.append(t)
+        due.sort(key=lambda t: t.last_checked_at or datetime.min.replace(tzinfo=UTC))
+        return due[:limit]
+
+    async def check(self, topic_id: int) -> str:
+        """Look at the topic now: title, section and its torrent's hash (magnet link) from the
+        page; the new torrent is applied when the hash changed. → "unchanged" | "updated" |
+        "gone" | the error."""
+        t = self.get(topic_id)
+        if t is None:
+            raise TrackingError("Not tracked")
+        now = datetime.now(UTC)
+        try:
+            info = await self._client.topic(topic_id)
+        except Exception as e:
+            self._save(topic_id=topic_id, last_checked_at=now, error=f"check failed: {e}")
+            return str(e)
+        self._save(
+            topic_id=topic_id, last_checked_at=now, title=info.title, forum=info.forum or t.forum,
+            forum_id=info.forum_id or t.forum_id, error=None,
+        )  # fmt: skip
+        if t.state != "active":
+            return "gone"
+        if info.info_hash and info.info_hash == t.info_hash:
+            return "unchanged"
+        try:
+            data = await self._client.download(topic_id)
+            if torrent.read(data).info_hash == t.info_hash:
+                return "unchanged"  # no magnet link on the page: compared the .torrent
+            await self.apply_update(self.get(topic_id), info.title, data)  # type: ignore[arg-type]
+        except Exception as e:
+            log.warning("update of topic %s failed: %s", topic_id, e)
+            self._save(topic_id=topic_id, error=f"update failed: {e}")
+            self._activity.event(
+                "update_failed", f"Updating {info.title} failed: {e}", level="error",
+                topic_id=topic_id,
+            )  # fmt: skip
+            return f"update failed: {e}"
+        return "updated"
+
+    async def apply_update(self, t: Tracked, title: str, data: bytes) -> None:
+        """Replace the topic's torrent by its new version in place: same folder, category and
+        file names (so the recheck finds what's already downloaded), then drop the old one
+        keeping its data, and re-point Sonarr's/Radarr's releases."""
+        old_hash = t.info_hash.lower()
+        old = await topics.present(self._qbit, old_hash)
+        if old is None:
+            self.gone(t.info_hash)
+            return
+        new = torrent.read(data)
+        new_hash = new.info_hash.lower()
+        if await topics.present(self._qbit, new_hash) is None:
+            form = {
+                "category": old.get("category") or "", "savepath": old.get("save_path") or "",
+                "stopped": "true", "paused": "true",
+            }  # fmt: skip
+            upload = (f"rutracker-{t.topic_id}.torrent", data, "application/x-bittorrent")
+            r = await self._qbit.request(
+                "POST", "torrents/add", data=form, files=[("torrents", upload)]
+            )
+            if r.status_code != 200 or r.text.strip() == "Fails.":
+                raise TrackingError(
+                    f"qBittorrent did not take the new torrent (HTTP {r.status_code})"
+                )
+            old_files = [f.get("name", "") for f in await topics.files(self._qbit, old_hash)]
+            new_files = [f.get("name", "") for f in await topics.files(self._qbit, new_hash)]
+            old_root, new_root = _root(old_files), _root(new_files)
+            if old_root and new_root and old_root != new_root:
+                await self._qbit.post(
+                    "torrents/renameFolder", hash=new_hash, oldPath=new_root, newPath=old_root
+                )
+                new_files = [old_root + f[len(new_root) :] for f in new_files]
+            old_tag, new_tag = _tag(t.title, t.forum), _tag(title, t.forum)
+            existing = set(old_files)
+            for f in new_files:
+                target = tagged(f, old_tag)
+                target = target if target in existing else tagged(f, new_tag)
+                if target != f:
+                    await self._qbit.post(
+                        "torrents/renameFile", hash=new_hash, oldPath=f, newPath=target
+                    )
+            await self._qbit.post("torrents/recheck", hashes=new_hash)
+            if not str(old.get("state", "")).startswith(("stopped", "paused")):
+                await topics.start(self._qbit, new_hash)
+        await topics.delete(self._qbit, old_hash, delete_files=False)
+        self._downloads.repoint(old_hash, new_hash)
+        before = parse_title(t.title).episodes
+        after = parse_title(title).episodes
+        change = (
+            f"episodes {before.first}-{before.last} → {after.first}-{after.last}"
+            if before and after and (before.first, before.last) != (after.first, after.last)
+            else "new torrent"
+        )
+        self._save(
+            topic_id=t.topic_id, info_hash=new_hash.upper(), title=title,
+            size=sum(n for _, n in new.files), last_changed_at=datetime.now(UTC), error=None,
+        )  # fmt: skip
+        self._activity.event(
+            "updated", f"Tracked topic updated ({change}): {title}", topic_id=t.topic_id
+        )
+
 
 async def remove_from_queue(
     settings: Any, app: str, download_id: str, transport: httpx.AsyncBaseTransport | None = None
@@ -308,3 +457,55 @@ async def remove_from_queue(
     except (httpx.HTTPError, ValueError) as e:
         log.warning("%s queue removal of %s: %s", app, download_id, e)
         return False
+
+
+# --- update detection and applying updates (M5b) ----------------------------------------------
+
+FEED_URL = "https://feed.rutracker.cc/atom/f/{forum_id}.atom"
+COMPLETE_CHECK_FACTOR = 7  # finished topics: checked this many times less often
+_TOPIC_LINK = re.compile(r"[?&]t=(\d+)")
+
+
+def ongoing(title: str) -> bool:
+    """Episodes still to come ("1-7 из 12"), or unknown."""
+    e = parse_title(title).episodes
+    if e is None:
+        return True
+    if e.complete:
+        return False
+    return not (e.total and e.last and e.last >= e.total)
+
+
+def feed_entries(xml: str) -> dict[int, datetime | None]:
+    """Topic id → last update, from a RuTracker section's Atom feed."""
+    from selectolax.lexbor import LexborHTMLParser
+
+    out: dict[int, datetime | None] = {}
+    for entry in LexborHTMLParser(xml).css("entry"):
+        link = entry.css_first("link")
+        href = (link.attributes.get("href") if link is not None else "") or ""
+        ident = entry.css_first("id")
+        m = _TOPIC_LINK.search(href) or _TOPIC_LINK.search(ident.text() if ident else "")
+        if not m:
+            continue
+        updated = entry.css_first("updated")
+        when = None
+        if updated is not None:
+            try:
+                when = datetime.fromisoformat(updated.text(strip=True).replace("Z", "+00:00"))
+            except ValueError:
+                when = None
+        out[int(m.group(1))] = when
+    return out
+
+
+def _root(files: list[str]) -> str:
+    """The torrent's top folder ("" for a single file)."""
+    heads = {f.split("/", 1)[0] for f in files if "/" in f}
+    return heads.pop() if len(heads) == 1 and all("/" in f for f in files) else ""
+
+
+def _tag(title: str, forum: str) -> str:
+    t = parse_title(title)
+    section = classify(forum or "")
+    return file_tag(release_name(t, section, assess(t, section), None))

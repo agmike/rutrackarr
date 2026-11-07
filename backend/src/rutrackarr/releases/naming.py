@@ -221,13 +221,15 @@ def release_name(
     parts.append(_CODEC.get(t.codec or "", ""))
     parts += [_HDR[h] for h in t.hdr if h in _HDR]
     parts += language_tokens(t, verdict, original_language)
+    if section.qc:
+        parts.append("RTA-QC")  # a QC subsection's release: scored down by its custom format
     name = " ".join(p for p in parts if p)
     return f"{' '.join(name.split())} -RuTracker"
 
 
 _FILE_TOKENS = re.compile(
     r"\b(?:OrigAudio|NoDialogue|OrigSubs|Rus(?:Dub|MVO|DVO|AVO|VO|Voice|Subs)"
-    r"|Eng(?:Voice|Subs)|RTA-T\d)\b"
+    r"|Eng(?:Voice|Subs)|RTA-T\d|RTA-QC)\b"
 )
 VIDEO_EXTS = {".mkv", ".mp4", ".avi", ".m2ts", ".ts", ".wmv", ".mov", ".webm"}
 

@@ -43,6 +43,7 @@ async def tick(app: FastAPI, state: dict[str, float]) -> None:
             store.record_error(str(e))
         except Exception as e:
             log.warning("heartbeat: %s", e)
+    await track_updates(app, state, now)
     if now - state.get("services", 0) >= SERVICES_EVERY:
         state["services"] = now
         await check_services(app)
@@ -104,3 +105,19 @@ async def check_services(app: FastAPI) -> None:
         )
     elif failed == 0:
         alerts.clear("searches", "searches succeed again")
+
+
+async def track_updates(app: FastAPI, state: dict[str, float], now: float) -> None:
+    """Tracked topics: the section feeds every `tracking.feed_minutes`, and a couple of slow
+    per-topic checks per round (each one RuTracker request)."""
+    tracker, svc = app.state.tracker, app.state.settings_service
+    if not app.state.qbit.configured() or not svc.get("rutracker.username"):
+        return
+    try:
+        if now - state.get("feeds", 0) >= 60 * int(svc.get("tracking.feed_minutes") or 15):
+            state["feeds"] = now
+            await tracker.poll_feeds()
+        for t in tracker.due(limit=2):
+            await tracker.check(t.topic_id)
+    except Exception as e:
+        log.warning("tracked topic checks: %s", e)

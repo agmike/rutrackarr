@@ -223,8 +223,10 @@ class TopicInfo:
     title: str
     forum: str
     forum_id: int | None
+    info_hash: str | None = None  # from the magnet link (upper-case hex), when shown
 
 
+_MAGNET = re.compile(r"magnet:\?xt=urn:btih:([0-9A-Fa-f]{40})")
 _FORUM_LINK = re.compile(r"viewforum\.php\?f=(\d+)")
 _TITLE_SUFFIX = re.compile(r"\s*::\s*RuTracker\.org\s*$", re.I)
 
@@ -252,4 +254,5 @@ def topic_info(html: str) -> TopicInfo | None:
         forum = _text(crumbs[-1])
         m = _FORUM_LINK.search(crumbs[-1].attributes.get("href") or "")
         forum_id = int(m.group(1)) if m else None
-    return TopicInfo(title, forum, forum_id)
+    magnet = _MAGNET.search(html)
+    return TopicInfo(title, forum, forum_id, magnet.group(1).upper() if magnet else None)

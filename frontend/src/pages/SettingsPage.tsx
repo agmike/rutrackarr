@@ -124,6 +124,18 @@ const tracking: FieldSpec[] = [
     placeholder: "rutrackarr/tracked",
     help: "Create it in qBittorrent/qui (with a save path) — RuTrackarr can't through qui's proxy. Use one no Sonarr/Radarr download client asks for: not a parent or child of their categories.",
   },
+  {
+    key: "tracking.feed_minutes",
+    label: "Read RuTracker's section feeds every (minutes)",
+    type: "number",
+    help: "One request per section that has tracked topics; topics the feed shows as changed are then checked.",
+  },
+  {
+    key: "tracking.check_hours",
+    label: "Also check each ongoing topic every (hours)",
+    type: "number",
+    help: "A backstop for updates the feeds miss: one request per topic. Finished topics are checked 7× less often.",
+  },
 ]
 
 const alerts: FieldSpec[] = [

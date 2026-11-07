@@ -96,3 +96,5 @@ class Alerts:
             self.clear("rutracker", message)
         elif kind == "gone":
             self.notify("RuTrackarr: topic torrent removed", message)
+        elif kind == "update_failed":
+            self.notify("RuTrackarr: tracked topic update failed", message)

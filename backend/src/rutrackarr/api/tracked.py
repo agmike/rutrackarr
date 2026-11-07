@@ -86,6 +86,16 @@ async def track(request: Request, body: TrackBody) -> dict[str, Any]:
     return {"topic_id": t.topic_id, "title": t.title}
 
 
+@router.post("/{topic_id}/check")
+async def check(topic_id: int, request: Request) -> dict[str, str]:
+    """Check the topic for an update now (one RuTracker request; more when it changed)."""
+    try:
+        result = await request.app.state.tracker.check(topic_id)
+    except TrackingError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    return {"result": result}
+
+
 @router.post("/{topic_id}/untrack")
 async def untrack(topic_id: int, request: Request) -> dict[str, bool]:
     try:

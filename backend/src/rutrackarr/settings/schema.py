@@ -49,6 +49,10 @@ FIELDS: dict[str, FieldDef] = {
     # hand (one no Sonarr/Radarr client asks for)
     "tracking.auto_track": FieldDef("choice", "on", choices=("on", "off")),
     "tracking.category": FieldDef("string", "rutrackarr/tracked"),
+    # Update checks: RuTracker's per-section feeds (one request per section with tracked
+    # topics), plus a slower per-topic check (ongoing topics; finished ones weekly)
+    "tracking.feed_minutes": FieldDef("int", 15, minimum=5, maximum=240),
+    "tracking.check_hours": FieldDef("int", 24, minimum=1, maximum=168),
     # Alerts: Apprise URLs (space- or comma-separated), e.g. tgram://<bot token>/<chat id>
     "alerts.apprise_urls": FieldDef("secret"),
     # General

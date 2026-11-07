@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ExternalLink, Trash2, Unlink } from "lucide-react"
+import { ExternalLink, RefreshCw, Trash2, Unlink } from "lucide-react"
 import { useState } from "react"
 import { Link } from "react-router"
 import { toast } from "sonner"
@@ -30,7 +30,9 @@ export function TrackedPage() {
         <CardHeader>
           <CardTitle>Track a topic</CardTitle>
           <CardDescription>
-            RuTrackarr downloads it now (into the tracking category, Sonarr/Radarr don't see it) and follows its updates. When
+            RuTrackarr downloads it now (into the tracking category, Sonarr/Radarr don't see it) and follows its updates —
+            RuTracker's section feeds are read every few minutes, and a changed topic's new torrent replaces the old one in place
+            (only new or changed files download). When
             a Sonarr/Radarr search matches it, it's offered like any result — a grab then uses the download that's already
             there. Results on the <Link to="/search" className="underline">Search</Link> page can be tracked too.
           </CardDescription>
@@ -74,6 +76,16 @@ export function TrackedPage() {
 }
 
 function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
+  const check = useMutation({
+    mutationFn: () => api.post<{ result: string }>(`tracked/${t.topic_id}/check`),
+    onSuccess: (r) => {
+      if (r.result === "updated") toast.success("Updated to the topic's new torrent")
+      else if (r.result === "unchanged") toast.info("No update")
+      else toast.warning(r.result)
+      onChange()
+    },
+    onError: (e) => toast.error(errorMessage(e)),
+  })
   const untrack = useMutation({
     mutationFn: () => api.post(`tracked/${t.topic_id}/untrack`),
     onSuccess: onChange,
@@ -108,6 +120,9 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
         <a href={t.topic_url} target="_blank" rel="noreferrer" className="shrink-0 text-muted-foreground hover:text-foreground" aria-label="RuTracker topic">
           <ExternalLink className="size-3.5" />
         </a>
+        <Button size="sm" variant="ghost" title="Check for an update now" onClick={() => check.mutate()} disabled={check.isPending}>
+          <RefreshCw className={check.isPending ? "animate-spin" : ""} />
+        </Button>
         <Button size="sm" variant="ghost" title="Stop tracking (the torrent stays)" onClick={() => untrack.mutate()} disabled={untrack.isPending}>
           <Unlink />
         </Button>
@@ -132,6 +147,7 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
           </>
         )}
         <span>tracked {formatAgo(t.created_at)}</span>
+        <span>checked {t.last_checked_at ? formatAgo(t.last_checked_at) : "not yet"}</span>
         {t.last_changed_at && <span>updated {formatAgo(t.last_changed_at)}</span>}
       </div>
       <div className="text-xs text-muted-foreground">

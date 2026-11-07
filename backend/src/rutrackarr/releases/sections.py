@@ -4,7 +4,8 @@ Classified from the section (forum) name — positive matches only: a section th
 doesn't look like a known video section is excluded. See docs/title-format.md.
 """
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 
 # Substrings (lowercase) of sections that are never results: device-specific encodes,
 # audio, extras, books, music, parodies, archives.
@@ -47,6 +48,7 @@ class Section:
     kind: str  # "anime" | "movie" | "series" | "other"
     origin: str  # "anime" | "foreign" | "russian" | "unknown"
     video: bool  # offered as a result at all
+    qc: bool = False  # a "QC подраздел": releases with complaints (e.g. unknown dubbers)
 
     @property
     def label(self) -> str:
@@ -56,7 +58,16 @@ class Section:
 EXCLUDED = Section("other", "unknown", False)
 
 
+def _is_qc(name: str) -> bool:
+    return re.search(r"\bqc\b", name.lower()) is not None
+
+
 def classify(name: str) -> Section:
+    s = _classify_name(name)
+    return replace(s, qc=True) if s.video and _is_qc(name) else s
+
+
+def _classify_name(name: str) -> Section:
     n = " ".join(name.lower().split())
     if n == "видео" or any(x in n for x in _EXCLUDED):
         return EXCLUDED
@@ -88,7 +99,8 @@ class Catalogue:
         by_id = {f.forum_id: f for f in forums}
         self.sections: dict[int, Section] = {}
         for f in forums:
-            self.sections[f.forum_id] = self._classify(f, by_id)
+            s = self._classify(f, by_id)
+            self.sections[f.forum_id] = replace(s, qc=s.video and _is_qc(f.name))
 
     @staticmethod
     def _classify(f, by_id) -> Section:  # type: ignore[no-untyped-def]

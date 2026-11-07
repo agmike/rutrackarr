@@ -246,3 +246,20 @@ def test_no_dialogue():
     assert t.names[1] == "Aru Machi Kado (Machikado) no Monogatari"
     v = assess(t, classify("Аниме (HD Video)"))
     assert (v.tier, v.label) == (ORIGINAL_SUBS, "No dialogue")
+
+
+def test_qc_subsection_releases_carry_a_token():
+    from rutrackarr.releases.language import assess
+    from rutrackarr.releases.naming import file_tag, release_name
+    from rutrackarr.releases.sections import classify
+    from rutrackarr.releases.title import parse_title
+
+    title = "Фрирен / Sousou no Frieren [TV] [28 из 28] [RUS(int), JAP+Sub] [2023, WEB-DL] [1080p]"
+    t = parse_title(title)
+    qc, hd = classify("Аниме (QC подраздел)"), classify("Аниме (HD Video)")
+    assert qc.qc and not hd.qc
+    name = release_name(t, qc, assess(t, qc), "Frieren")
+    assert name.endswith("RTA-QC -RuTracker") and "RTA-QC" not in release_name(
+        t, hd, assess(t, hd), "Frieren"
+    )
+    assert "RTA-QC" in file_tag(name)

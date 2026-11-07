@@ -244,3 +244,5 @@ One tolerant, token-based parser for all sections, with the forum id as a hint o
    `[N x|х] (Dub|MVO|DVO|AVO|VO|<Lang>) [Lang] [(info)]`, `Original [Lang]`, `Sub [(]langs[)]`.
 4. Unknowns are kept, not guessed: a release without parsed language info is "unknown,
    check the topic page", never "no original audio".
+
+- `RTA-QC`: the topic is in a QC subsection ("Аниме (QC подраздел)": releases with complaints, e.g. unknown dubbers). Custom format "RuTrackarr · QC subsection" (`docs/arr-custom-formats.json`) — give it a small negative score.

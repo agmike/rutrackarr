@@ -175,3 +175,79 @@ def test_feed_check(api, net):  # noqa: F811
         2,
         ["Topic A", "Topic B"],
     )
+
+
+def topic_page_with(title: str, info_hash: str) -> httpx.Response:
+    page = topic_page(title).text.replace(
+        "</body>",
+        f'<a class="magnet-link" href="magnet:?xt=urn:btih:{info_hash}&tr=x">m</a></body>',
+    )
+    return html(page)
+
+
+def test_feed_entries():
+    from datetime import UTC, datetime
+
+    from rutrackarr.tracking.tracker import feed_entries, ongoing
+
+    atom = (
+        '<feed xmlns="http://www.w3.org/2005/Atom"><entry><title>[Обновлено] X</title>'
+        '<link href="https://rutracker.org/forum/viewtopic.php?t=6830000"/>'
+        "<updated>2026-11-07T10:00:00+00:00</updated></entry>"
+        "<entry><title>Y</title><id>tag:rto,2026:/t/5</id></entry></feed>"
+    )
+    assert feed_entries(atom) == {6830000: datetime(2026, 11, 7, 10, tzinfo=UTC)}
+    assert ongoing("X [TV] [1-7 из 12] [2026]") and not ongoing("X [TV] [12 из 12] [2026]")
+
+
+def test_check_unchanged_and_backstop(api, net, qbit):  # noqa: F811
+    _, real = track_by_url(api, net)
+    tracker = api.app.state.tracker
+    assert [t.topic_id for t in tracker.due()] == [6830000]  # never checked
+    net.routes[("GET", "/forum/viewtopic.php")] = [topic_page_with(TOPIC, real.upper())]
+    assert api.post("/api/tracked/6830000/check").json() == {"result": "unchanged"}
+    assert tracker.due() == []
+    t = tracked(api)[6830000]
+    assert t["last_checked_at"] and t["forum"] == FORUM
+
+
+def test_update_applied_in_place(api, net, qbit):  # noqa: F811
+    data, old = track_by_url(api, net)
+    login(api)
+    add(api, torrent.mark(data, RELEASE))  # Sonarr uses the topic too
+    old_files = list(qbit.files[old])
+    new_ep = "[SubsPlus+] Nia Liston - The Merciless Maiden - S01E03 (ADN WEB-DL 1080p AVC AAC) [ABCDEF12].mkv"
+    new_data, new_hash = make_torrent(TOPIC, [*NIA_FILES, new_ep])
+    new = new_hash.lower()
+    for path in ("torrents/recheck", "torrents/renameFolder"):
+        net.on("POST", f"/api/v2/{path}", qbit.handle)
+    title = TOPIC + " [1-3 из 12]"
+    net.routes[("GET", "/forum/viewtopic.php")] = [topic_page_with(title, new_hash)]
+    net.routes[("GET", "/forum/dl.php")] = [httpx.Response(200, content=new_data)]
+    assert api.post("/api/tracked/6830000/check").json() == {"result": "updated"}
+    assert old not in qbit.torrents and new in qbit.torrents
+    assert qbit.torrents[new]["category"] == TRACKED
+    assert qbit.added[-1]["fields"]["savepath"] == "/data/torrents/sonarr"
+    assert set(old_files) <= set(qbit.files[new])  # same names: the recheck finds the data
+    (added_ep,) = set(qbit.files[new]) - set(old_files)
+    assert added_ep.endswith(" -RuTracker.mkv")  # the new episode is tagged too
+    assert "torrents/recheck" in qbit.calls and f"delete:{old}:false" in qbit.calls
+    t = tracked(api)[6830000]
+    assert t["title"] == title and t["last_changed_at"]
+    items = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
+    assert [i["name"] for i in items] == [RELEASE]  # Sonarr's release now backed by the new torrent
+    assert "updated" in [e["kind"] for e in api.get("/api/status/events").json()["items"]]
+
+
+def test_feeds_trigger_checks(api, net, qbit):  # noqa: F811
+    import asyncio
+
+    _, real = track_by_url(api, net)
+    atom = (
+        '<feed><entry><link href="https://rutracker.org/forum/viewtopic.php?t=6830000"/>'
+        "<updated>2099-01-01T00:00:00+00:00</updated></entry></feed>"
+    )
+    net.on("GET", "/atom/f/1105.atom", httpx.Response(200, text=atom))
+    net.routes[("GET", "/forum/viewtopic.php")] = [topic_page_with(TOPIC, real.upper())]
+    assert asyncio.run(api.app.state.tracker.poll_feeds()) == 1
+    assert tracked(api)[6830000]["last_checked_at"]

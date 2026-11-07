@@ -80,6 +80,14 @@ class DownloadStore:
             q = select(DownloadRow).order_by(DownloadRow.created_at.desc()).limit(limit)
             return [_download(r) for r in s.scalars(q)]
 
+    def repoint(self, old_real: str, new_real: str) -> None:
+        """A topic's torrent was replaced by its updated version."""
+        with self._sessions.begin() as s:
+            for row in s.scalars(
+                select(DownloadRow).where(DownloadRow.real_hash == old_real.upper())
+            ):
+                row.real_hash = new_real.upper()
+
     def set_category(self, info_hash: str, category: str) -> None:
         with self._sessions.begin() as s:
             row = s.get(DownloadRow, info_hash.strip().upper())

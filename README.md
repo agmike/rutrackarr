@@ -88,7 +88,9 @@ and `sonarr/rutracker`.
   Sonarr/Radarr client asks for) or because Sonarr/Radarr grabbed them. Tracked topics take part
   in every Sonarr/Radarr search; a grab of one reuses the torrent that's already there. Remove
   deletes the torrent (imported episodes stay: hardlinks) and takes unfinished releases out of
-  Sonarr's/Radarr's queue.
+  Sonarr's/Radarr's queue. Updates are found through RuTracker's per-section feeds (plus a slow
+  per-topic check) and applied in place: the new torrent takes the old one's folder, category
+  and file names, so a recheck finds what's downloaded and only new or changed files download.
 - **Overrides:** per series/film (TVDB id / TMDb id): extra or replacement search titles, the
   release title, a season offset, include/exclude title filters, and topics pinned to the series
   (and a season). JSON export/import.

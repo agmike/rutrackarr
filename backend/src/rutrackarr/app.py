@@ -120,12 +120,14 @@ def create_app(
         app.state.tmdb,
         RadarrTitles(lambda: svc.get("radarr.url"), lambda: svc.get("radarr.api_key"), transport),
     )
+    app.state.tracker.spacer = spacer
     app.state.torznab_cache = SearchCache(
         app.state.rutracker,
         catalogue_path=settings.data_dir / "sections.json",
         ttl=lambda: 60 * int(svc.get("search.cache_minutes") or 0),
         rss_ttl=lambda: 60 * int(svc.get("search.rss_cache_minutes") or 0),
     )
+    app.state.tracker.find_row = app.state.torznab_cache.find
 
     app.include_router(torznab_api.router, prefix=f"{base}/torznab")
     app.include_router(qbit_proxy.router, prefix=f"{base}/qbit")
