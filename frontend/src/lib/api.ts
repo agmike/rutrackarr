@@ -318,6 +318,7 @@ export type SandboxRow = {
   topic_id: number
   title: string
   forum: string
+  forum_id?: number | null
   size: number
   seeders: number
   release: string | null

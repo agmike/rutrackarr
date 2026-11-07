@@ -1,8 +1,9 @@
 import { useMutation } from "@tanstack/react-query"
 import { CheckCircle2, ExternalLink, Pin, XCircle } from "lucide-react"
 import { useState } from "react"
-import { Link } from "react-router"
+import { Link, useSearchParams } from "react-router"
 import { LibraryPicker } from "@/components/LibraryPicker"
+import { TrackButton } from "@/components/TrackButton"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -45,8 +46,17 @@ function pinLink(f: Form, topicId: number, season: number | null) {
   return `/overrides?${p}`
 }
 
-export function SandboxPage() {
-  const [form, setForm] = useState<Form>(EMPTY)
+export function SimulateSearch() {
+  const [params] = useSearchParams()
+  // Prefilled from links (the Queries page): ?mode=arr&tvdbid=…&season=… / tmdbid / imdbid
+  const [form, setForm] = useState<Form>(() => ({
+    ...EMPTY,
+    kind: params.get("tmdbid") || params.get("imdbid") ? "movie" : "tvsearch",
+    tvdbid: params.get("tvdbid") ?? "",
+    tmdbid: params.get("tmdbid") ?? "",
+    imdbid: params.get("imdbid") ?? "",
+    season: params.get("season") ?? "",
+  }))
   const [picked, setPicked] = useState<LibraryItem | null>(null)
   const [fresh, setFresh] = useState(false)
   const [compare, setCompare] = useState(false)
@@ -78,8 +88,7 @@ export function SandboxPage() {
           <CardTitle>Simulate a Sonarr/Radarr search</CardTitle>
           <CardDescription>
             Runs the same search Sonarr or Radarr would send — titles from the metadata, overrides, every RuTracker query — and
-            shows each topic found with its release name or why it was dropped. Not logged as a query. For a plain RuTracker
-            search use the <Link to="/search" className="underline">Search</Link> page.
+            shows each topic found with its release name or why it was dropped. Not logged as a query.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3 text-sm">
@@ -208,6 +217,7 @@ function ResultCard({ title, r, form }: { title: string; r: SandboxResult; form:
                     {row.kept ? row.release : row.title}
                   </span>
                   {row.tracked && <Badge variant="outline">tracked</Badge>}
+                  <TrackButton topic={{ ...row, forum_id: row.forum_id ?? null }} />
                   {pin && (
                     <Link to={pin} className="shrink-0 text-muted-foreground hover:text-foreground" title="Pin this topic to the series (override)">
                       <Pin className="size-3.5" />

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query"
 import { ChevronDown, ChevronRight, Copy, Download, ExternalLink, Search } from "lucide-react"
 import { Fragment, useMemo, useState } from "react"
 import { useSearchParams } from "react-router"
+import { SimulateSearch } from "@/pages/SandboxPage"
 import { toast } from "sonner"
 import { TrackButton } from "@/components/TrackButton"
 import { Badge } from "@/components/ui/badge"
@@ -90,6 +91,30 @@ function LanguageBadge({ language }: { language: Language }) {
 }
 
 export function SearchPage() {
+  const [params, setParams] = useSearchParams()
+  const mode = params.get("mode") === "arr" ? "arr" : "rutracker"
+  const pick = (m: "rutracker" | "arr") => setParams(m === "arr" ? { mode: "arr" } : {}, { replace: true })
+  return (
+    <div className="grid gap-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant={mode === "rutracker" ? "default" : "outline"} onClick={() => pick("rutracker")}>
+          RuTracker
+        </Button>
+        <Button size="sm" variant={mode === "arr" ? "default" : "outline"} onClick={() => pick("arr")}>
+          As Sonarr/Radarr
+        </Button>
+        <span className="text-xs text-muted-foreground">
+          {mode === "arr"
+            ? "The search Sonarr/Radarr would send — titles, overrides, tracked topics — and why each topic is kept or dropped"
+            : "A plain RuTracker search, every result parsed and ranked"}
+        </span>
+      </div>
+      {mode === "arr" ? <SimulateSearch /> : <RuTrackerSearch />}
+    </div>
+  )
+}
+
+function RuTrackerSearch() {
   const [params, setParams] = useSearchParams()
   const q = params.get("q") ?? ""
   const [draft, setDraft] = useState(q)

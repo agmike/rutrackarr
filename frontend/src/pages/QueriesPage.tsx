@@ -84,7 +84,10 @@ function QueryList({ tab }: { tab: Exclude<Tab, "dropped"> }) {
 function QueryRow({ e, open, toggle }: { e: QueryEntry; open: boolean; toggle: () => void }) {
   const ov = overrideLink(e.query)
   const p = parseQuery(e.query)
-  const sandbox = p.tvdb || p.tmdb ? `/sandbox` : null
+  const sandbox =
+    p.tvdb || p.tmdb
+      ? `/search?${new URLSearchParams({ mode: "arr", ...(p.tvdb ? { tvdbid: p.tvdb } : { tmdbid: p.tmdb! }), ...(p.season ? { season: p.season } : {}) })}`
+      : null
   return (
     <li className="grid min-w-0 gap-1 border-b pb-1 last:border-b-0">
       <button type="button" onClick={toggle} className="flex min-w-0 items-center gap-2 text-left hover:text-foreground">
@@ -112,7 +115,7 @@ function QueryRow({ e, open, toggle }: { e: QueryEntry; open: boolean; toggle: (
             )}
             {sandbox && (
               <Link to={sandbox} className="inline-flex items-center gap-1 underline">
-                <FlaskConical className="size-3" /> Try in the sandbox
+                <FlaskConical className="size-3" /> Simulate this search
               </Link>
             )}
           </div>

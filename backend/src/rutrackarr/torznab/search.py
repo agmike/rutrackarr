@@ -67,6 +67,7 @@ class Trace:
             row.topic_id,
             {
                 "topic_id": row.topic_id, "title": row.title, "forum": row.forum,
+                "forum_id": row.forum_id,
                 "size": row.size, "seeders": row.seeders, "release": None, "reason": None,
                 "tracked": row.topic_id in self.tracked,
             },

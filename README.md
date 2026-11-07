@@ -78,7 +78,8 @@ and `sonarr/rutracker`.
 
 - **Status:** connections (incl. whether Sonarr/Radarr are set up to use RuTrackarr), downloads,
   recent grabs, activity, query stats and the RuTracker request budget.
-- **Sandbox:** run the exact search Sonarr/Radarr would send for a series or film from their
+- **Search**, two modes — *RuTracker*: a plain search, every result parsed and ranked (and
+  trackable); *As Sonarr/Radarr*: run the exact search Sonarr/Radarr would send for a series or film from their
   libraries (season/episode), with or without overrides, and see every RuTracker topic with its
   release name or why it was dropped.
 - **Queries:** the query log — each search with the topics it found and why each was kept or
