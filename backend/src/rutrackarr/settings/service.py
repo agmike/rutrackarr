@@ -39,7 +39,7 @@ def _validate(key: str, field: FieldDef, raw: Any) -> str:
     if not isinstance(raw, str):
         raise ValueError("must be text")
     value = raw.strip()
-    if field.kind == "url" and value:
+    if (field.kind == "url" or field.url) and value:
         parsed = urlparse(value)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise ValueError("must be an http(s) URL")
@@ -51,6 +51,16 @@ class SettingsService:
         self._sessions = sessions
         self._box = box
         self._pinned_api_key = (pinned_api_key or "").strip() or None
+        self._encrypt_new_secrets()
+
+    def _encrypt_new_secrets(self) -> None:
+        """Settings that became secrets (e.g. the qBittorrent URL) are encrypted in place."""
+        with self._sessions.begin() as s:
+            for row in s.scalars(select(SettingRow)):
+                field = FIELDS.get(row.key)
+                if field is not None and field.kind == "secret" and not row.is_secret:
+                    row.value = self._box.encrypt(row.value) if row.value else row.value
+                    row.is_secret = True
 
     # --- reading ---------------------------------------------------------------
     def _rows(self) -> dict[str, SettingRow]:

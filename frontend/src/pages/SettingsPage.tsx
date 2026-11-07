@@ -72,9 +72,9 @@ const qbittorrent: FieldSpec[] = [
   {
     key: "qbittorrent.url",
     label: "qBittorrent URL",
-    type: "url",
-    placeholder: "http://qbittorrent:8080",
-    help: "The real qBittorrent Web UI. Leave empty to serve RuTracker's .torrent files unchanged.",
+    type: "secret",
+    placeholder: "http://qbittorrent:8080 or http://qui:7476/proxy/<token>",
+    help: "The real qBittorrent Web UI, or a qui client-proxy URL (its path is the access token, so the URL is stored like a password and never shown again). Leave empty to serve RuTracker's .torrent files unchanged.",
   },
   { key: "qbittorrent.username", label: "Username", type: "text" },
   { key: "qbittorrent.password", label: "Password", type: "secret" },

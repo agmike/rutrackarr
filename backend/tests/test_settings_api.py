@@ -74,3 +74,34 @@ def test_api_key_pinned(make_client):
 def test_settings_survive_restart(make_client):
     make_client().put("/api/settings", json={"values": {"rutracker.password": "p"}})
     assert make_client().get("/api/settings").json()["secrets"]["rutracker.password"] is True
+
+
+def test_qbittorrent_url_is_a_secret_url(client):
+    bad = client.put("/api/settings", json={"values": {"qbittorrent.url": "qui:7476/proxy/x"}})
+    assert bad.status_code == 422
+    url = "http://qui:7476/proxy/0123456789abcdef"
+    assert client.put("/api/settings", json={"values": {"qbittorrent.url": url}}).status_code == 200
+    view = client.get("/api/settings").json()
+    assert "qbittorrent.url" not in view["values"] and view["secrets"]["qbittorrent.url"] is True
+    assert "0123456789abcdef" not in client.get("/api/settings").text
+    assert client.app.state.settings_service.get("qbittorrent.url") == url
+
+
+def test_plaintext_setting_becomes_encrypted_on_start(tmp_path):
+    from datetime import UTC, datetime
+
+    from rutrackarr.app import create_app
+    from rutrackarr.config import BootstrapSettings
+    from rutrackarr.db.models import SettingRow
+
+    settings = BootstrapSettings(data_dir=tmp_path / "d", static_dir=tmp_path / "s")
+    app = create_app(settings)
+    sessions = app.state.settings_service._sessions
+    with sessions.begin() as s:  # as stored by v0.10 and earlier
+        s.add(SettingRow(key="qbittorrent.url", value="http://gluetun:8090", is_secret=False,
+                         updated_at=datetime.now(UTC)))  # fmt: skip
+    app = create_app(settings)
+    with sessions() as s:
+        row = s.get(SettingRow, "qbittorrent.url")
+        assert row.is_secret and "gluetun" not in row.value
+    assert app.state.settings_service.get("qbittorrent.url") == "http://gluetun:8090"

@@ -12,6 +12,7 @@ class FieldDef:
     default: str | int | None = None
     minimum: int | None = None
     maximum: int | None = None
+    url: bool = False  # a secret that must be an http(s) URL
 
 
 FIELDS: dict[str, FieldDef] = {
@@ -35,7 +36,8 @@ FIELDS: dict[str, FieldDef] = {
     "radarr.api_key": FieldDef("secret"),
     # Download client: qBittorrent behind RuTrackarr's qBittorrent-compatible proxy (empty URL:
     # off — .torrent files are served as RuTracker sends them)
-    "qbittorrent.url": FieldDef("url", ""),
+    # A secret: behind qui it's a client-proxy URL whose path is the access token.
+    "qbittorrent.url": FieldDef("secret", url=True),
     "qbittorrent.username": FieldDef("string", "admin"),
     "qbittorrent.password": FieldDef("secret"),
     # Alerts: Apprise URLs (space- or comma-separated), e.g. tgram://<bot token>/<chat id>
