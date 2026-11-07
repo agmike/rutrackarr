@@ -115,6 +115,11 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
         <Badge variant={t.state === "gone" ? "destructive" : t.source === "manual" ? "default" : "outline"}>
           {t.state === "gone" ? "gone" : t.source === "manual" ? "by hand" : "grabbed"}
         </Badge>
+        {t.content_id != null && (
+          <Badge variant="secondary" title={`${t.content_kind === "tv" ? "TVDB" : "TMDb"} ${t.content_id}${t.season != null ? `, season ${t.season}` : ""}`}>
+            {t.content_kind === "movie" ? "Radarr" : "Sonarr"}
+          </Badge>
+        )}
         <span className="min-w-0 flex-1 truncate font-medium" title={t.title}>
           {t.title}
         </span>
@@ -151,18 +156,22 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
         <span>checked {t.last_checked_at ? formatAgo(t.last_checked_at) : "not yet"}</span>
         {t.last_changed_at && <span>updated {formatAgo(t.last_changed_at)}</span>}
       </div>
-      <div className="text-xs text-muted-foreground">
-        {t.content_id ? (
-          <span>
-            {t.content_kind === "tv" ? "Series" : "Film"} {t.content_kind === "tv" ? "TVDB" : "TMDb"} {t.content_id}
-            {t.season != null ? ` · season ${t.season}` : ""}
-            {t.content_title ? ` — ${t.content_title}` : ""}
-          </span>
-        ) : (
-          <span>Not matched by a Sonarr/Radarr search yet</span>
-        )}
-        {t.releases.length > 0 && <span> · used by: {t.releases.join("; ")}</span>}
-      </div>
+      {(t.content_id != null || t.releases.length > 0) && (
+        <div className="truncate text-xs text-muted-foreground" title={[t.content_title, ...t.releases].filter(Boolean).join("\n")}>
+          {t.content_id != null && (
+            <span>
+              {t.content_kind === "tv" ? "TVDB" : "TMDb"} {t.content_id}
+              {t.season != null ? ` · season ${t.season}` : ""}
+              {t.content_title ? ` — ${t.content_title}` : ""}
+            </span>
+          )}
+          {t.releases.length > 0 && (
+            <span>
+              {t.content_id != null ? " · " : ""}used by: {t.releases.join("; ")}
+            </span>
+          )}
+        </div>
+      )}
       {t.error && <span className="text-xs text-destructive">{t.error}</span>}
     </li>
   )
