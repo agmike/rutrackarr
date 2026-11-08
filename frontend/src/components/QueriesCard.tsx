@@ -3,7 +3,7 @@ import { useState } from "react"
 import { Link } from "react-router"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { api, formatAgo, formatWhen, type QueriesView, type ServiceView } from "@/lib/api"
+import { api, formatAgo, formatWhen, type QueriesView, type ServiceView, STATUS_ROWS } from "@/lib/api"
 
 const KIND: Record<string, string> = { search: "text", tvsearch: "TV", movie: "movie", rss: "RSS" }
 
@@ -17,7 +17,7 @@ export function QueriesCard() {
   const service = useQuery({ queryKey: ["status-service"], queryFn: () => api.get<ServiceView>("status/service"), refetchInterval: 10_000 })
   const q = useQuery({
     queryKey: ["status-queries", errorsOnly],
-    queryFn: () => api.get<QueriesView>(`status/queries?limit=8${errorsOnly ? "&errors=true" : ""}`),
+    queryFn: () => api.get<QueriesView>(`status/queries?limit=${STATUS_ROWS}${errorsOnly ? "&errors=true" : ""}`),
     refetchInterval: 15_000,
   })
   const day = service.data?.queries_24h

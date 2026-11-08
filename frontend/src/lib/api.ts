@@ -406,3 +406,6 @@ export type TrackingView = {
   feeds: { forum_id: number; forum: string; tracked: number; status?: number; entries?: number; error?: string }[]
   auto_track: boolean
 }
+
+/** Rows listed in the status page's list cards (activity, grabs, queries). */
+export const STATUS_ROWS = 8

@@ -1,12 +1,12 @@
 import { useQuery } from "@tanstack/react-query"
 import { ExternalLink } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { api, formatAgo, formatWhen, type GrabsView } from "@/lib/api"
+import { api, formatAgo, formatWhen, type GrabsView, STATUS_ROWS } from "@/lib/api"
 
 export function RecentGrabsCard() {
   const q = useQuery({
     queryKey: ["status-grabs"],
-    queryFn: () => api.get<GrabsView>("status/grabs?limit=10"),
+    queryFn: () => api.get<GrabsView>(`status/grabs?limit=${STATUS_ROWS}`),
     refetchInterval: 30_000,
   })
   return (

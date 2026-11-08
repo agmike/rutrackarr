@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query"
 import { AlertTriangle, ExternalLink, Info, XCircle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { api, formatAgo, formatWhen, type EventsView } from "@/lib/api"
+import { api, formatAgo, formatWhen, type EventsView, STATUS_ROWS } from "@/lib/api"
 
 const ICON = {
   info: <Info className="size-3.5 text-muted-foreground" />,
@@ -10,7 +10,7 @@ const ICON = {
 }
 
 export function ActivityCard() {
-  const q = useQuery({ queryKey: ["status-events"], queryFn: () => api.get<EventsView>("status/events?limit=25&exclude=grab"), refetchInterval: 15_000 })
+  const q = useQuery({ queryKey: ["status-events"], queryFn: () => api.get<EventsView>(`status/events?limit=${STATUS_ROWS}&exclude=grab`), refetchInterval: 15_000 })
   return (
     <Card className="md:col-span-2">
       <CardHeader>
