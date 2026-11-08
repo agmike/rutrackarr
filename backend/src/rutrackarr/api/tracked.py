@@ -114,3 +114,40 @@ async def remove(topic_id: int, request: Request, delete_files: bool = True) -> 
     except QbitError as e:
         raise HTTPException(status_code=502, detail=str(e)) from None
     return {"notes": notes}
+
+
+@router.post("/library-event")
+async def library_event(request: Request) -> dict[str, Any]:
+    """Sonarr/Radarr Connect → Webhook (On Series/Movie Delete, On Episode/Movie File Delete):
+    grabbed topics are checked against the library right away (debounced) instead of at the next
+    6-hourly sync. Authenticated by the API key (?apikey= or X-Api-Key), like the Torznab API."""
+    key = request.query_params.get("apikey") or request.headers.get("X-Api-Key", "")
+    if not key or key != request.app.state.settings_service.api_key():
+        raise HTTPException(401, "API key required")
+    try:
+        event = (await request.json()).get("eventType", "")
+    except ValueError:
+        event = ""
+    if event != "Test":
+        schedule_library_sync(request.app)
+    return {"ok": True, "event": event}
+
+
+LIBRARY_EVENT_DELAY = 30.0  # seconds: a series delete sends a burst of events
+
+
+def schedule_library_sync(app: Any) -> None:
+    import asyncio
+    import logging
+
+    if getattr(app.state, "library_sync_task", None) and not app.state.library_sync_task.done():
+        return
+
+    async def run() -> None:
+        await asyncio.sleep(LIBRARY_EVENT_DELAY)
+        try:
+            await app.state.tracker.sync_library()
+        except Exception as e:
+            logging.getLogger(__name__).warning("library sync: %s", e)
+
+    app.state.library_sync_task = asyncio.create_task(run())

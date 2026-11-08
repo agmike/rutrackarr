@@ -249,7 +249,7 @@ class Tracker:
             level="warn", topic_id=t.topic_id,
         )  # fmt: skip
 
-    async def untrack(self, topic_id: int) -> None:
+    async def untrack(self, topic_id: int, why: str = "") -> None:
         """Stop following the topic; its torrent stays. One tracked by hand that Sonarr/Radarr
         use is handed over to them (moved into their releases' category)."""
         t = self.get(topic_id)
@@ -261,7 +261,10 @@ class Tracker:
         with self._sessions.begin() as s:
             if (r := s.get(TrackedRow, topic_id)) is not None:
                 s.delete(r)
-        self._activity.event("untracked", f"No longer tracking {t.title}", topic_id=topic_id)
+        self._activity.event(
+            "untracked", f"No longer tracking {t.title}{f' ({why})' if why else ''}",
+            topic_id=topic_id,
+        )  # fmt: skip
 
     async def remove(self, topic_id: int, delete_files: bool = True) -> list[str]:
         """Untrack and delete the torrent (and its download files — imported episodes are
@@ -291,11 +294,14 @@ class Tracker:
     # --- following Sonarr/Radarr ---------------------------------------------------------------
 
     async def sync_library(self) -> dict[str, int]:
-        """Grabbed topics follow their series/film in Sonarr/Radarr: deleted there → untracked
-        (the torrent stays), unmonitored → paused (no update checks), monitored again → active.
-        Topics tracked by hand are RuTrackarr's own and left alone. → counts of what changed."""
+        """Grabbed topics follow their series/film in Sonarr/Radarr: deleted there, or nothing of
+        what the topic covers left in the library (and none of its releases still downloading)
+        → untracked (the torrent stays); unmonitored → paused (no update checks); monitored again
+        → active. Topics tracked by hand are RuTrackarr's own and left alone.
+        → counts of what changed."""
         done = {"untracked": 0, "paused": 0, "resumed": 0}
         cache: dict[tuple[str, int], dict[str, Any] | bool | None] = {}
+        queues: dict[str, set[str] | None] = {}
         for t in self.all(include_gone=False):
             if t.manual or not t.content_id or t.content_kind not in ("tv", "movie"):
                 continue
@@ -306,9 +312,19 @@ class Tracker:
             if item is None:
                 continue  # app not connected or not answering: change nothing
             if item is False:
-                await self.untrack(t.topic_id)
+                await self.untrack(t.topic_id, "deleted in Sonarr/Radarr")
                 done["untracked"] += 1
                 continue
+            if not has_files(item, t.season):  # type: ignore[arg-type]
+                app = "sonarr" if t.content_kind == "tv" else "radarr"
+                if app not in queues:
+                    queues[app] = await queued(self._settings, app, self._transport)
+                q = queues[app]
+                ids = {d.info_hash.upper() for d in self.releases(t)} | {t.info_hash.upper()}
+                if q is not None and not (ids & q):
+                    await self.untrack(t.topic_id, "nothing of it left in the library")
+                    done["untracked"] += 1
+                    continue
             want = monitored(item, t.season)  # type: ignore[arg-type]
             if t.state == "active" and not want:
                 self._save(topic_id=t.topic_id, state="paused")
@@ -538,6 +554,39 @@ async def library_item(
             return items[0] if items else False
     except (httpx.HTTPError, ValueError) as e:
         log.warning("%s lookup of %s: %s", app, content_id, e)
+        return None
+
+
+def has_files(item: dict[str, Any], season: int | None) -> bool:
+    """Anything in the library: the film's file, the season's (or series') episode files."""
+    if "hasFile" in item and "seasons" not in item:
+        return bool(item.get("hasFile"))
+    if season is not None:
+        for s in item.get("seasons") or []:
+            if s.get("seasonNumber") == season:
+                return bool((s.get("statistics") or {}).get("episodeFileCount"))
+        return False
+    return bool((item.get("statistics") or {}).get("episodeFileCount"))
+
+
+async def queued(
+    settings: Any, app: str, transport: httpx.AsyncBaseTransport | None = None
+) -> set[str] | None:
+    """Download ids in Sonarr's/Radarr's queue (upper case); None when it can't be told."""
+    url = str(settings.get(f"{app}.url") or "").strip().rstrip("/")
+    key = settings.get(f"{app}.api_key")
+    if not url or not key:
+        return None
+    try:
+        async with httpx.AsyncClient(
+            timeout=15, transport=transport, headers={"X-Api-Key": str(key)}
+        ) as c:
+            r = await c.get(f"{url}/api/v3/queue", params={"pageSize": 1000})
+            if r.status_code != 200:
+                return None
+            return {str(q.get("downloadId", "")).upper() for q in r.json().get("records", [])}
+    except (httpx.HTTPError, ValueError) as e:
+        log.warning("%s queue: %s", app, e)
         return None
 
 

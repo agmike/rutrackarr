@@ -313,7 +313,8 @@ def test_grabbed_topics_follow_sonarr(api, net):  # noqa: F811
         json={"values": {"sonarr.url": "http://sonarr:8989/sonarr", "sonarr.api_key": "k"}},
     )
     series = {"tvdbId": 176941, "monitored": True,
-              "seasons": [{"seasonNumber": 1, "monitored": False}]}  # fmt: skip
+              "seasons": [{"seasonNumber": 1, "monitored": False,
+                           "statistics": {"episodeFileCount": 3}}]}  # fmt: skip
     answer = {"status": 200, "items": [series]}
     net.on(
         "GET",
@@ -332,3 +333,41 @@ def test_grabbed_topics_follow_sonarr(api, net):  # noqa: F811
     answer["status"] = 500
     _sherlock_tracked(api)
     assert asyncio.run(sync()) == {"untracked": 0, "paused": 0, "resumed": 0}  # can't tell
+
+
+def test_grabbed_topic_untracked_when_its_files_leave_the_library(api, net):  # noqa: F811
+    import asyncio
+
+    _sherlock_tracked(api)
+    api.put(
+        "/api/settings",
+        json={"values": {"sonarr.url": "http://sonarr:8989/sonarr", "sonarr.api_key": "k"}},
+    )
+    stats = {"episodeFileCount": 0}
+    series = {"tvdbId": 176941, "monitored": True,
+              "seasons": [{"seasonNumber": 1, "monitored": True, "statistics": stats}]}  # fmt: skip
+    queue = {"records": [{"id": 1, "downloadId": "A" * 40}]}
+    net.on("GET", "/sonarr/api/v3/series", lambda r: httpx.Response(200, json=[series]))
+    net.on("GET", "/sonarr/api/v3/queue", lambda r: httpx.Response(200, json=queue))
+    sync = api.app.state.tracker.sync_library
+    assert asyncio.run(sync())["untracked"] == 0  # still downloading: in Sonarr's queue
+    queue["records"] = []
+    stats["episodeFileCount"] = 1
+    assert asyncio.run(sync())["untracked"] == 0  # something of it is in the library
+    stats["episodeFileCount"] = 0
+    assert asyncio.run(sync())["untracked"] == 1 and 1 not in tracked(api)
+    events = api.get("/api/status/events").json()["items"]
+    assert any("nothing of it left in the library" in e["message"] for e in events)
+
+
+def test_library_event_webhook(api, net, monkeypatch):  # noqa: F811
+    from rutrackarr.api import tracked as tracked_api
+
+    calls = []
+    monkeypatch.setattr(tracked_api, "schedule_library_sync", lambda app: calls.append(app))
+    url = "/api/tracked/library-event"
+    assert api.post(url, json={"eventType": "SeriesDelete"}).status_code == 401
+    r = api.post(url, params={"apikey": key(api)}, json={"eventType": "Test"})
+    assert r.status_code == 200 and calls == []
+    r = api.post(url, headers={"X-Api-Key": key(api)}, json={"eventType": "EpisodeFileDelete"})
+    assert r.status_code == 200 and len(calls) == 1

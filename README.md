@@ -120,9 +120,12 @@ The token format is described in `docs/title-format.md`.
   in every Sonarr/Radarr search; a grab of one reuses the torrent that's already there. A tracked
   topic that has the episode asked for answers the search without RuTracker being asked, and after
   an update its newest episodes show up in Sonarr's RSS on their own, so Sonarr grabs new episodes
-  of an airing series without searching. Grabbed topics follow the series/film: paused (no update
-  checks) while it isn't monitored in Sonarr/Radarr, untracked when it's deleted there; topics
-  tracked by hand are left alone. A topic that RuTracker merges into another one (a new season pack
+  of an airing series without searching. Grabbed topics follow the series/film (checked every 6 hours): paused
+  (no update checks) while it isn't monitored in Sonarr/Radarr, untracked when it's deleted there
+  or nothing the topic covers is left in the library (unless it's still downloading); topics
+  tracked by hand are left alone. To have this happen right after a deletion, add a **Webhook**
+  connection in Sonarr/Radarr (Settings → Connect) with *On Series/Movie Delete* and *On
+  Episode/Movie File Delete*, URL `<RuTrackarr>/api/tracked/library-event?apikey=<API key>`. A topic that RuTracker merges into another one (a new season pack
   replacing the episodes) needs nothing special: the new topic is found and grabbed episode by episode. Remove
   deletes the torrent (imported episodes stay: hardlinks) and takes unfinished releases out of
   Sonarr's/Radarr's queue. Updates are found through RuTracker's per-section feeds (plus a slow
