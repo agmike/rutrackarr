@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { ExternalLink, RefreshCw, Trash2, Unlink } from "lucide-react"
+import { ExternalLink, Hourglass, RefreshCw, Trash2, Unlink } from "lucide-react"
 import { useState } from "react"
 import { Link } from "react-router"
 import { toast } from "sonner"
@@ -7,18 +7,20 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { api, del, errorMessage, formatAgo, formatBytes, type TrackedTopic, type TrackedView } from "@/lib/api"
+import { api, del, errorMessage, formatAgo, formatBytes, formatUntil, formatWhen, type TrackedTopic, type TrackedView } from "@/lib/api"
 
 export function TrackedPage() {
   const qc = useQueryClient()
   const [topic, setTopic] = useState("")
+  const [ttl, setTtl] = useState("")
   const list = useQuery({ queryKey: ["tracked"], queryFn: () => api.get<TrackedView>("tracked"), refetchInterval: 15_000 })
   const refresh = () => qc.invalidateQueries({ queryKey: ["tracked"] })
   const track = useMutation({
-    mutationFn: () => api.post<{ title: string }>("tracked", { topic }),
+    mutationFn: () => api.post<{ title: string }>("tracked", { topic, ttl_days: ttl.trim() ? Number(ttl) : null }),
     onSuccess: (r) => {
       toast.success(`Tracking ${r.title}`)
       setTopic("")
+      setTtl("")
       refresh()
     },
     onError: (e) => toast.error(errorMessage(e)),
@@ -46,6 +48,15 @@ export function TrackedPage() {
             }}
           >
             <Input value={topic} onChange={(e) => setTopic(e.target.value)} placeholder="https://rutracker.org/forum/viewtopic.php?t=… or the topic number" />
+            <Input
+              type="number"
+              min={0}
+              className="w-36 shrink-0"
+              value={ttl}
+              onChange={(e) => setTtl(e.target.value)}
+              placeholder="TTL (days)"
+              title="Untrack it when the topic hasn't updated for this many days. Empty: never."
+            />
             <Button type="submit" disabled={track.isPending || !topic.trim()}>
               {track.isPending ? "Adding…" : "Track"}
             </Button>
@@ -86,6 +97,19 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
     },
     onError: (e) => toast.error(errorMessage(e)),
   })
+  const setTtl = useMutation({
+    mutationFn: (ttl_days: number | null) => api.put(`tracked/${t.topic_id}/ttl`, { ttl_days }),
+    onSuccess: onChange,
+    onError: (e) => toast.error(errorMessage(e)),
+  })
+  const editTtl = () => {
+    const def = t.source === "manual" ? "empty: never" : "empty: the setting's default; 0: never"
+    const answer = prompt(`Untrack when the topic hasn't updated for how many days? (${def})`, t.ttl_days != null ? String(t.ttl_days) : "")
+    if (answer === null) return
+    const v = answer.trim()
+    if (v !== "" && !/^\d+$/.test(v)) return toast.error("A whole number of days, or empty")
+    setTtl.mutate(v === "" ? null : Number(v))
+  }
   const untrack = useMutation({
     mutationFn: () => api.post(`tracked/${t.topic_id}/untrack`),
     onSuccess: onChange,
@@ -135,6 +159,9 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
         <Button size="sm" variant="ghost" title="Check for an update now" onClick={() => check.mutate()} disabled={check.isPending}>
           <RefreshCw className={check.isPending ? "animate-spin" : ""} />
         </Button>
+        <Button size="sm" variant="ghost" title="TTL: untrack when the topic hasn't updated for a while" onClick={editTtl} disabled={setTtl.isPending}>
+          <Hourglass />
+        </Button>
         <Button size="sm" variant="ghost" title="Stop tracking (the torrent stays)" onClick={() => untrack.mutate()} disabled={untrack.isPending}>
           <Unlink />
         </Button>
@@ -161,6 +188,12 @@ function Row({ t, onChange }: { t: TrackedTopic; onChange: () => void }) {
         <span>tracked {formatAgo(t.created_at)}</span>
         <span>checked {t.last_checked_at ? formatAgo(t.last_checked_at) : "not yet"}</span>
         {t.last_changed_at && <span>updated {formatAgo(t.last_changed_at)}</span>}
+        {t.state !== "gone" && (
+          <span title={t.expires_at ? `Untracked ${formatWhen(t.expires_at)} unless the topic updates first` : undefined}>
+            {t.expires_at ? `TTL ${t.ttl} d · untracked ${formatUntil(t.expires_at)}` : "no TTL"}
+            {t.source === "grab" && t.ttl_days == null && t.ttl != null ? " (default)" : ""}
+          </span>
+        )}
       </div>
       {(t.content_id != null || t.releases.length > 0) && (
         <div className="truncate text-xs text-muted-foreground" title={[t.content_title, ...t.releases].filter(Boolean).join("\n")}>

@@ -50,7 +50,12 @@ FIELDS: dict[str, FieldDef] = {
     # A single-episode grab of a topic downloads only that episode (and its tracks), not the
     # whole topic; later grabs from it add theirs
     "download.only_grabbed": FieldDef("choice", "off", choices=("on", "off")),
-    "tracking.auto_track": FieldDef("choice", "on", choices=("on", "off")),
+    # on: every grabbed topic; ongoing: only topics with episodes still to come (by the title, or
+    # the latest season of a series Sonarr calls continuing; films never); off: none
+    "tracking.auto_track": FieldDef("choice", "on", choices=("on", "ongoing", "off")),
+    # Grabbed topics not updated for this many days (since their last update, or since tracking
+    # started) are untracked; 0 = never. Topics tracked by hand have their own TTL (or none).
+    "tracking.auto_ttl_days": FieldDef("int", 30, minimum=0, maximum=3650),
     "tracking.category": FieldDef("string", "rutrackarr/tracked"),
     # Update checks: RuTracker's per-section feeds (one request per section with tracked
     # topics), plus a slower per-topic check (ongoing topics; finished ones weekly)

@@ -1,4 +1,4 @@
-import { Activity, BookmarkCheck, ListTree, PanelLeftClose, PanelLeftOpen, Search, Settings, SlidersHorizontal } from "lucide-react"
+import { Activity, BookmarkCheck, Download, ListTree, PanelLeftClose, PanelLeftOpen, Search, Settings, SlidersHorizontal } from "lucide-react"
 import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router"
 import { useQuery } from "@tanstack/react-query"
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils"
 
 const nav = [
   { to: "/", label: "Status", icon: Activity, end: true },
+  { to: "/downloads", label: "Downloads", icon: Download, end: false },
   { to: "/search", label: "Search", icon: Search, end: false },
   { to: "/tracked", label: "Tracked", icon: BookmarkCheck, end: false },
   { to: "/queries", label: "Queries", icon: ListTree, end: false },

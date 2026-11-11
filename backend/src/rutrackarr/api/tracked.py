@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from rutrackarr.qbit.upstream import QbitError
 from rutrackarr.rutracker.errors import RuTrackerError
@@ -50,6 +50,9 @@ async def list_tracked(request: Request) -> dict[str, Any]:
                 "last_checked_at": t.last_checked_at.isoformat() if t.last_checked_at else None,
                 "last_changed_at": t.last_changed_at.isoformat() if t.last_changed_at else None,
                 "error": t.error,
+                "ttl_days": t.ttl_days,
+                "ttl": tracker.ttl(t),
+                "expires_at": (e.isoformat() if (e := tracker.expires_at(t)) else None),
                 "releases": [d.release or d.name for d in releases],
                 "in_queue": len(releases),
                 "torrent": {
@@ -68,6 +71,12 @@ class TrackBody(BaseModel):
     forum_id: int | None = None
     size: int = 0
     seeders: int = 0
+    ttl_days: int | None = Field(default=None, ge=0, le=3650)  # None/0: never untracked
+
+
+class TtlBody(BaseModel):
+    # None: the default (by hand: never; grabbed: the tracking.auto_ttl_days setting); 0: never
+    ttl_days: int | None = Field(default=None, ge=0, le=3650)
 
 
 @router.post("")
@@ -77,7 +86,13 @@ async def track(request: Request, body: TrackBody) -> dict[str, Any]:
         raise HTTPException(status_code=422, detail="Expected a topic id or a RuTracker topic URL")
     try:
         t = await request.app.state.tracker.track(
-            topic_id, body.title, body.forum, body.forum_id, body.size, body.seeders
+            topic_id,
+            body.title,
+            body.forum,
+            body.forum_id,
+            body.size,
+            body.seeders,
+            body.ttl_days,
         )
     except TrackingError as e:
         raise HTTPException(status_code=409, detail=str(e)) from None
@@ -94,6 +109,22 @@ async def check(topic_id: int, request: Request) -> dict[str, str]:
     except TrackingError as e:
         raise HTTPException(status_code=404, detail=str(e)) from None
     return {"result": result}
+
+
+@router.put("/{topic_id}/ttl")
+def set_ttl(topic_id: int, body: TtlBody, request: Request) -> dict[str, Any]:
+    tracker = request.app.state.tracker
+    try:
+        tracker.set_ttl(topic_id, body.ttl_days)
+    except TrackingError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from None
+    t = tracker.get(topic_id)
+    until = tracker.expires_at(t)
+    return {
+        "ttl_days": t.ttl_days,
+        "ttl": tracker.ttl(t),
+        "expires_at": until.isoformat() if until else None,
+    }
 
 
 @router.post("/{topic_id}/untrack")

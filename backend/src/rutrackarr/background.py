@@ -114,11 +114,13 @@ async def check_services(app: FastAPI) -> None:
 
 
 LIBRARY_SYNC_HOURS = 6
+EXPIRE_EVERY = 3600  # seconds: untrack topics past their TTL
 
 
 async def track_updates(app: FastAPI, state: dict[str, float], now: float) -> None:
-    """Tracked topics: the section feeds every `tracking.feed_minutes`, and a couple of slow
-    per-topic checks per round (each one RuTracker request)."""
+    """Tracked topics: the section feeds every `tracking.feed_minutes`, a couple of slow
+    per-topic checks per round (each one RuTracker request), the Sonarr/Radarr library sync and
+    the TTL (topics not updated for too long are untracked)."""
     tracker, svc = app.state.tracker, app.state.settings_service
     if not app.state.qbit.configured() or not svc.get("rutracker.username"):
         return
@@ -131,5 +133,8 @@ async def track_updates(app: FastAPI, state: dict[str, float], now: float) -> No
         if due(state, "library", now, LIBRARY_SYNC_HOURS * 3600):
             state["library"] = now
             await tracker.sync_library()
+        if due(state, "expire", now, EXPIRE_EVERY):
+            state["expire"] = now
+            await tracker.expire()
     except Exception as e:
         log.warning("tracked topic checks: %s", e)

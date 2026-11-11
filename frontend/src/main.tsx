@@ -5,6 +5,7 @@ import { createBrowserRouter, Navigate, RouterProvider } from "react-router"
 import "./index.css"
 import App from "./App.tsx"
 import { routerBasename } from "./lib/basename"
+import { DownloadsPage } from "./pages/DownloadsPage"
 import { OverridesPage } from "./pages/OverridesPage"
 import { QueriesPage } from "./pages/QueriesPage"
 import { SearchPage } from "./pages/SearchPage"
@@ -22,6 +23,7 @@ const router = createBrowserRouter(
       element: <App />,
       children: [
         { index: true, element: <StatusPage /> },
+        { path: "downloads", element: <DownloadsPage /> },
         { path: "search", element: <SearchPage /> },
         { path: "tracked", element: <TrackedPage /> },
         { path: "sandbox", element: <Navigate to="/search?mode=arr" replace /> },

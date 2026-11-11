@@ -62,10 +62,16 @@ class Tracked:
     last_checked_at: datetime | None
     last_changed_at: datetime | None
     error: str | None
+    ttl_days: int | None = None  # own TTL; None: by hand → never, grabbed → the setting
 
     @property
     def manual(self) -> bool:
         return self.source == "manual"
+
+    @property
+    def last_update(self) -> datetime:
+        """When the topic last changed, or when tracking started."""
+        return self.last_changed_at or self.created_at
 
     def row(self) -> SearchRow:
         """As a search result row, so searches can match and offer it."""
@@ -85,6 +91,7 @@ def _from_row(r: TrackedRow) -> Tracked:
         r.topic_id, r.title, r.forum, r.forum_id, r.size, r.seeders, r.info_hash.upper(),
         r.source, r.state, r.content_kind, r.content_id, r.season, r.content_title,
         _utc(r.created_at), _utc(r.last_checked_at), _utc(r.last_changed_at), r.error,  # type: ignore[arg-type]
+        r.ttl_days,
     )  # fmt: skip
 
 
@@ -169,12 +176,17 @@ class Tracker:
             f"{f' S{season}' if season is not None else ''}: {name}", topic_id=topic_id,
         )  # fmt: skip
 
-    def on_grab(self, download: Download, rhash: str) -> None:
-        """Sonarr/Radarr added a release through the proxy: track its topic (if switched on)."""
-        if str(self._settings.get("tracking.auto_track") or "on") != "on" or not download.topic_id:
+    async def on_grab(self, download: Download, rhash: str) -> None:
+        """Sonarr/Radarr added a release through the proxy: track its topic (`tracking.auto_track`:
+        on → always, ongoing → only a topic with episodes still to come, off → never)."""
+        mode = str(self._settings.get("tracking.auto_track") or "on")
+        if mode == "off" or not download.topic_id:
             return
         existing = self.get(download.topic_id)
         if existing is not None and existing.state == "active":
+            return
+        if mode == "ongoing" and not await self._ongoing(download):
+            log.info("not tracking %s: not ongoing", download.release or download.title)
             return
         row = self.find_row(download.topic_id)
         self._save(
@@ -190,6 +202,24 @@ class Tracker:
             topic_id=download.topic_id,
         )  # fmt: skip
 
+    async def _ongoing(self, download: Download) -> bool:
+        """Worth following: the title shows episodes still to come, or Sonarr calls the series
+        continuing and the topic is its latest season. Films: never. Sonarr not answering: yes
+        (the TTL ends it if nothing comes)."""
+        if download.content_kind == "movie":
+            return False
+        if title_ongoing(download.title or ""):
+            return True
+        if download.content_kind != "tv" or not download.content_id:
+            return False
+        item = await library_item(self._settings, "tv", download.content_id, self._transport)
+        if item is None:
+            return True
+        if item is False or item.get("status") != "continuing":  # type: ignore[union-attr]
+            return False
+        latest = latest_season(item)  # type: ignore[arg-type]
+        return download.season is None or latest is None or download.season >= latest
+
     async def track(
         self,
         topic_id: int,
@@ -198,14 +228,19 @@ class Tracker:
         forum_id: int | None = None,
         size: int = 0,
         seeders: int = 0,
+        ttl_days: int | None = None,
     ) -> Tracked:
         """Track a topic by hand: add its torrent to qBittorrent (tracking category) unless it's
-        there already, files tagged like any RuTrackarr release."""
+        there already, files tagged like any RuTrackarr release. `ttl_days`: untrack when not
+        updated for that long (None/0: never)."""
         if not self._qbit.configured():
             raise TrackingError("Set up the download client (qBittorrent) first")
+        ttl_days = ttl_days or None
         existing = self.get(topic_id)
         if existing is not None and existing.state == "active" and existing.manual:
-            return existing
+            if ttl_days != existing.ttl_days:
+                self.set_ttl(topic_id, ttl_days)
+            return self.get(topic_id)  # type: ignore[return-value]
         if not title:
             info = await self._client.topic(topic_id)
             title, forum, forum_id = info.title, info.forum, info.forum_id
@@ -234,6 +269,7 @@ class Tracker:
             topic_id=topic_id, title=title, forum=forum or "", forum_id=forum_id,
             size=size or sum(n for _, n in tinfo.files), seeders=seeders,
             info_hash=rhash.upper(), source="manual", state="active", error=None,
+            ttl_days=ttl_days,
         )  # fmt: skip
         self._activity.event("tracked", f"Tracking {title} — {how}", topic_id=topic_id)
         return self.get(topic_id)  # type: ignore[return-value]
@@ -248,6 +284,39 @@ class Tracker:
             "gone", f"Tracked topic's torrent removed from qBittorrent: {t.title}",
             level="warn", topic_id=t.topic_id,
         )  # fmt: skip
+
+    # --- TTL -----------------------------------------------------------------------------------
+
+    def ttl(self, t: Tracked) -> int | None:
+        """Days without an update before the topic is untracked; None = never."""
+        if t.ttl_days is not None:
+            return t.ttl_days or None
+        if t.manual:
+            return None
+        return int(self._settings.get("tracking.auto_ttl_days") or 0) or None
+
+    def expires_at(self, t: Tracked) -> datetime | None:
+        days = self.ttl(t)
+        return t.last_update + timedelta(days=days) if days else None
+
+    def set_ttl(self, topic_id: int, days: int | None) -> None:
+        """A topic's own TTL (None: the default — never by hand, the setting for grabbed ones;
+        0: never)."""
+        if self.get(topic_id) is None:
+            raise TrackingError("Not tracked")
+        self._save(topic_id=topic_id, ttl_days=days)
+
+    async def expire(self) -> int:
+        """Untrack topics not updated within their TTL (their torrent stays where it is: a
+        grabbed one follows its releases, one tracked by hand keeps its category). → count."""
+        now = datetime.now(UTC)
+        done = 0
+        for t in self.all(include_gone=False):
+            until = self.expires_at(t)
+            if until is not None and now >= until:
+                await self.untrack(t.topic_id, f"not updated for {self.ttl(t)} days")
+                done += 1
+        return done
 
     async def untrack(self, topic_id: int, why: str = "") -> None:
         """Stop following the topic; its torrent stays. One tracked by hand that Sonarr/Radarr
@@ -617,6 +686,26 @@ def ongoing(title: str) -> bool:
     if e.complete:
         return False
     return not (e.total and e.last and e.last >= e.total)
+
+
+def title_ongoing(title: str) -> bool:
+    """The title shows episodes still to come: "1-7 из 12", "1-7 из XXX" (no episode range,
+    e.g. a film or a pack without one: no)."""
+    e = parse_title(title).episodes
+    if e is None or e.complete:
+        return False
+    return not (e.total and e.last and e.last >= e.total)
+
+
+def latest_season(item: dict[str, Any]) -> int | None:
+    """The series' newest season that has episodes (Sonarr lists announced empty ones too)."""
+    numbers = [
+        s.get("seasonNumber") or 0
+        for s in item.get("seasons") or []
+        if (s.get("seasonNumber") or 0) > 0
+        and ((s.get("statistics") or {}).get("totalEpisodeCount", 1) or 0) > 0
+    ]
+    return max(numbers) if numbers else None
 
 
 def feed_entries(xml: str) -> dict[int, datetime | None]:

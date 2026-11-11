@@ -164,3 +164,6 @@ class TrackedRow(Base):
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Untrack when not updated for this many days. None: by hand → never, grabbed → the
+    # tracking.auto_ttl_days setting; 0 → never.
+    ttl_days: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -371,3 +371,152 @@ def test_library_event_webhook(api, net, monkeypatch):  # noqa: F811
     assert r.status_code == 200 and calls == []
     r = api.post(url, headers={"X-Api-Key": key(api)}, json={"eventType": "EpisodeFileDelete"})
     assert r.status_code == 200 and len(calls) == 1
+
+
+# --- 0.16: track "ongoing only", TTL, Downloads page --------------------------------------------
+
+
+def test_title_ongoing_and_latest_season():
+    from rutrackarr.tracking.tracker import latest_season, title_ongoing
+
+    assert title_ongoing("Шоу / Show [TV] [1-7 из 12] [2026, WEB-DL 1080p]")
+    assert title_ongoing("Шоу / Show [TV] [1-7 из XXX] [2026, WEB-DL 1080p]")
+    assert not title_ongoing("Шоу / Show [TV] [1-12 из 12] [2026, WEB-DL 1080p]")
+    assert not title_ongoing(SHERLOCK_S1)  # 1-3 из 3
+    assert not title_ongoing("Фильм / Film (2024) WEB-DL 1080p")  # no episode range
+    seasons = [
+        {"seasonNumber": 0, "statistics": {"totalEpisodeCount": 9}},
+        {"seasonNumber": 1, "statistics": {"totalEpisodeCount": 12}},
+        {"seasonNumber": 2, "statistics": {"totalEpisodeCount": 6}},
+        {"seasonNumber": 3, "statistics": {"totalEpisodeCount": 0}},  # announced, empty
+    ]
+    assert latest_season({"seasons": seasons}) == 2
+    assert latest_season({"seasons": []}) is None
+
+
+def _grab(api, net, **params):  # noqa: F811
+    data, _ = make_torrent(TOPIC, NIA_FILES)
+    net.on("GET", "/forum/dl.php", httpx.Response(200, content=data))
+    r = api.get(
+        "/torznab/download/6830000",
+        params={"apikey": key(api), "name": RELEASE, **params},
+    )
+    login(api)
+    assert add(api, r.content).text == "Ok."
+
+
+def test_track_ongoing_only(api, net, qbit):  # noqa: F811
+    api.put(
+        "/api/settings",
+        json={
+            "values": {
+                "tracking.auto_track": "ongoing",
+                "sonarr.url": "http://sonarr:8989/sonarr",
+                "sonarr.api_key": "k",
+            }
+        },
+    )
+    series = {
+        "tvdbId": 424242, "monitored": True, "status": "ended",
+        "seasons": [{"seasonNumber": 1, "statistics": {"totalEpisodeCount": 12}},
+                    {"seasonNumber": 2, "statistics": {"totalEpisodeCount": 12}}],
+    }  # fmt: skip
+    net.on("GET", "/sonarr/api/v3/series", lambda r: httpx.Response(200, json=[series]))
+
+    def regrab(season: str) -> bool:
+        api.delete("/api/tracked/6830000", params={"delete_files": "false"})
+        _grab(api, net, tvdbid="424242", season=season)
+        return 6830000 in tracked(api)
+
+    assert not regrab("2")  # the series has ended
+    series["status"] = "continuing"
+    assert not regrab("1")  # an older season of a continuing series
+    assert regrab("2")  # its latest season
+    series["status"] = "ended"
+    assert not regrab("2")
+    # A film is never "ongoing".
+    api.delete("/api/tracked/6830000", params={"delete_files": "false"})
+    _grab(api, net, tmdbid="550")
+    assert 6830000 not in tracked(api)
+
+
+def test_ttl(api, net, qbit):  # noqa: F811
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+
+    tracker = api.app.state.tracker
+    old = datetime.now(UTC) - timedelta(days=40)
+    _sherlock_tracked(api, last_changed_at=old)  # grabbed, 40 days without an update
+    t = tracked(api)[1]
+    assert (t["ttl_days"], t["ttl"]) == (None, 30)  # the setting's default
+    assert t["expires_at"].startswith((old + timedelta(days=30)).date().isoformat())
+    # By hand: no TTL unless given one.
+    tracker._save(
+        topic_id=2, title="hand", forum="x", forum_id=193, size=1, seeders=1, info_hash="B" * 40,
+        source="manual", state="active", last_changed_at=old,
+    )  # fmt: skip
+    tracker._save(
+        topic_id=3, title="hand, 5 days", forum="x", forum_id=193, size=1, seeders=1,
+        info_hash="C" * 40, source="manual", state="active", last_changed_at=old, ttl_days=5,
+    )  # fmt: skip
+    assert tracked(api)[2]["expires_at"] is None
+    # A grabbed topic can be exempted (0 = never) …
+    r = api.put("/api/tracked/1/ttl", json={"ttl_days": 0})
+    assert r.status_code == 200 and r.json() == {"ttl_days": 0, "ttl": None, "expires_at": None}
+    assert asyncio.run(tracker.expire()) == 1  # only topic 3
+    assert set(tracked(api)) == {1, 2}
+    # … and back to the default; the setting at 0 turns the auto TTL off.
+    api.put("/api/tracked/1/ttl", json={"ttl_days": None})
+    api.put("/api/settings", json={"values": {"tracking.auto_ttl_days": 0}})
+    assert asyncio.run(tracker.expire()) == 0
+    api.put("/api/settings", json={"values": {"tracking.auto_ttl_days": 30}})
+    assert asyncio.run(tracker.expire()) == 1 and set(tracked(api)) == {2}
+    events = api.get("/api/status/events").json()["items"]
+    assert any("not updated for 30 days" in e["message"] for e in events)
+    assert api.put("/api/tracked/99/ttl", json={"ttl_days": 3}).status_code == 404
+    assert api.put("/api/tracked/2/ttl", json={"ttl_days": -1}).status_code == 422
+
+
+def test_track_by_hand_with_ttl(api, net, qbit):  # noqa: F811
+    data, _ = make_torrent(TOPIC, NIA_FILES)
+    net.on("GET", "/forum/viewtopic.php", topic_page(TOPIC))
+    net.on("GET", "/forum/dl.php", httpx.Response(200, content=data))
+    assert api.post("/api/tracked", json={"topic": "6830000", "ttl_days": 14}).status_code == 200
+    assert tracked(api)[6830000]["ttl"] == 14
+    # Tracking it again sets the TTL given (empty: none).
+    assert api.post("/api/tracked", json={"topic": "6830000"}).status_code == 200
+    assert tracked(api)[6830000]["ttl"] is None and len(qbit.added) == 1
+
+
+def test_downloads_page(api, net, qbit):  # noqa: F811
+    api.put(
+        "/api/settings",
+        json={"values": {"sonarr.url": "http://sonarr:8989/sonarr", "sonarr.api_key": "k",
+                         "tracking.auto_track": "off"}},
+    )  # fmt: skip
+    queue = {"records": []}
+    status = {"code": 200}
+    net.on("GET", "/sonarr/api/v3/queue", lambda r: httpx.Response(status["code"], json=queue))
+    _grab(api, net, tvdbid="424242", season="1")
+    virtual = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()[0]
+    queue["records"] = [{"id": 1, "downloadId": virtual["hash"].upper()}]
+    page = api.get("/api/downloads").json()
+    assert page["configured"] and [len(i["releases"]) for i in page["items"]] == [1]
+    item = page["items"][0]
+    assert item["tracked"] is None and item["releases"][0]["in_queue"] is True
+    assert item["title"] in (TOPIC, RELEASE) and item["status"] == "downloading"
+    # Imported (out of Sonarr's queue) and not tracked: no longer RuTrackarr's business.
+    queue["records"] = []
+    assert api.get("/api/downloads").json()["items"] == []
+    # Tracked by hand: listed whatever its state, with its TTL.
+    net.on("GET", "/forum/viewtopic.php", topic_page(TOPIC))
+    api.post("/api/tracked", json={"topic": "6830000", "ttl_days": 7})
+    item = api.get("/api/downloads").json()["items"][0]
+    assert item["tracked"]["source"] == "manual" and item["tracked"]["ttl"] == 7
+    assert item["releases"][0]["in_queue"] is False  # its imported release still shown
+    # Sonarr's queue unreadable: unfinished releases count as in progress.
+    api.delete("/api/tracked/6830000", params={"delete_files": "false"})
+    _grab(api, net, tvdbid="424242", season="1")
+    status["code"] = 500
+    items = api.get("/api/downloads").json()["items"]
+    assert len(items) == 1 and items[0]["releases"][0]["in_queue"] is None

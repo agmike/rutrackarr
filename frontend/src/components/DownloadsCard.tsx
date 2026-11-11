@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 import { ArrowDown, ArrowUp, ExternalLink } from "lucide-react"
+import { Link } from "react-router"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { StatTile } from "@/components/StatTile"
-import { api, formatBytes, formatDuration, type DownloadItem, type DownloadsView } from "@/lib/api"
+import { api, formatBytes, formatDuration, STATUS_ROWS, type DownloadItem, type DownloadsView } from "@/lib/api"
 
 function app(category: string): string {
   const c = category.toLowerCase()
@@ -65,11 +66,19 @@ function Row({ d }: { d: DownloadItem }) {
 export function DownloadsCard() {
   const q = useQuery({ queryKey: ["status-downloads"], queryFn: () => api.get<DownloadsView>("status/downloads"), refetchInterval: 10_000 })
   const t = q.data?.totals
+  // Only what's still downloading here; everything RuTrackarr manages is on the Downloads page.
+  const active = (q.data?.items ?? []).filter((d) => d.status !== "seeding")
   return (
     <Card className="md:col-span-2">
       <CardHeader>
         <CardTitle>Downloads</CardTitle>
-        <CardDescription>Releases grabbed through RuTrackarr's download client and topics tracked by hand, live from qBittorrent</CardDescription>
+        <CardDescription>
+          Totals for RuTrackarr's topic torrents, and what's downloading now — everything it manages is on the{" "}
+          <Link to="/downloads" className="underline">
+            Downloads
+          </Link>{" "}
+          page
+        </CardDescription>
       </CardHeader>
       <CardContent className="grid gap-4 text-sm">
         {q.isPending && <p className="text-muted-foreground">loading…</p>}
@@ -86,13 +95,18 @@ export function DownloadsCard() {
             <StatTile label="Size" value={formatBytes(t.size)} />
           </div>
         )}
-        {q.data?.configured && q.data.items.length === 0 && <p className="text-muted-foreground">No releases tracked.</p>}
-        {q.data && q.data.items.length > 0 && (
+        {q.data?.configured && active.length === 0 && <p className="text-muted-foreground">Nothing downloading.</p>}
+        {active.length > 0 && (
           <ul className="grid gap-2">
-            {q.data.items.map((d) => (
+            {active.slice(0, STATUS_ROWS).map((d) => (
               <Row key={d.hash} d={d} />
             ))}
           </ul>
+        )}
+        {active.length > STATUS_ROWS && (
+          <Link to="/downloads" className="text-xs text-muted-foreground underline">
+            {active.length - STATUS_ROWS} more on the Downloads page
+          </Link>
         )}
       </CardContent>
     </Card>

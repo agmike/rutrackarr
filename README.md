@@ -106,8 +106,12 @@ The token format is described in `docs/title-format.md`.
 ### Web UI
 
 - **Status:** service (version, uptime, query stats, RuTracker request budget), RuTracker session,
-  downloads, tracked topics, recent grabs, activity, queries, and connections (incl. whether
-  Sonarr/Radarr are set up to use RuTrackarr).
+  downloads (totals and what's downloading now), tracked topics, recent grabs, activity, queries,
+  and connections (incl. whether Sonarr/Radarr are set up to use RuTrackarr).
+- **Downloads:** everything RuTrackarr manages in qBittorrent — releases grabbed through it that
+  Sonarr/Radarr haven't imported yet (still in their queue), and every tracked topic's torrent,
+  with its releases, the topic's last update and its TTL deadline. An imported release whose topic
+  isn't tracked is Sonarr's/Radarr's again (their post-import category) and drops off the list.
 - **Search**, two modes — *RuTracker*: a plain search, every result parsed and ranked (and
   trackable); *As Sonarr/Radarr*: run the exact search Sonarr/Radarr would send for a series or film from their
   libraries (season/episode), with or without overrides, and see every RuTracker topic with its
@@ -123,7 +127,12 @@ The token format is described in `docs/title-format.md`.
   of an airing series without searching. Grabbed topics follow the series/film (checked every 6 hours): paused
   (no update checks) while it isn't monitored in Sonarr/Radarr, untracked when it's deleted there
   or nothing the topic covers is left in the library (unless it's still downloading); topics
-  tracked by hand are left alone. To have this happen right after a deletion, add a **Webhook**
+  tracked by hand are left alone. *Track what Sonarr/Radarr grab* can be on, off or **ongoing
+  only**: a topic whose title shows episodes still to come ("1-7 из 12"), or the latest season of
+  a series Sonarr calls continuing (films never). **TTL:** grabbed topics not updated for
+  `tracking.auto_ttl_days` (default 30, 0 = never; counted from the topic's last update or from
+  when tracking started) are untracked — their torrent stays where Sonarr/Radarr put it; a topic
+  tracked by hand has its own TTL (set when tracking it, editable later; none by default). To have this happen right after a deletion, add a **Webhook**
   connection in Sonarr/Radarr (Settings → Connect) with *On Series/Movie Delete* and *On
   Episode/Movie File Delete*, URL `<RuTrackarr>/api/tracked/library-event?apikey=<API key>`. A topic that RuTracker merges into another one (a new season pack
   replacing the episodes) needs nothing special: the new topic is found and grabbed episode by episode. Remove

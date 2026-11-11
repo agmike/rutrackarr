@@ -124,8 +124,17 @@ const tracking: FieldSpec[] = [
     type: "select",
     options: [
       { value: "on", label: "On — follow updates of every grabbed topic" },
+      { value: "ongoing", label: "Ongoing only — topics with episodes still to come" },
       { value: "off", label: "Off — only topics tracked by hand" },
     ],
+    help: "Ongoing: the topic's title shows episodes still to come (“1-7 из 12”), or Sonarr calls the series continuing and the topic is its latest season. Films are never ongoing.",
+  },
+  {
+    key: "tracking.auto_ttl_days",
+    label: "Untrack grabbed topics not updated for (days)",
+    type: "number",
+    help: "Counted from the topic's last update (or since tracking started). 0 = never. The torrent stays where Sonarr/Radarr put it. Topics tracked by hand have their own TTL, set when tracking them.",
+    showIf: (v) => v["tracking.auto_track"] !== "off",
   },
   {
     key: "tracking.category",

@@ -277,6 +277,16 @@ export function formatAgo(iso: string | null): string {
   return `${Math.floor(s / 86400)} d ago`
 }
 
+/** "in 12 d" / "in 5 h" / "due" for a deadline. */
+export function formatUntil(iso: string | null): string {
+  if (!iso) return "—"
+  const s = (new Date(iso).getTime() - Date.now()) / 1000
+  if (s <= 0) return "due"
+  if (s < 3600) return `in ${Math.max(1, Math.floor(s / 60))} min`
+  if (s < 86400) return `in ${Math.floor(s / 3600)} h`
+  return `in ${Math.floor(s / 86400)} d`
+}
+
 export const del = <T,>(path: string) =>
   fetch(`api/${path}`, { method: "DELETE", headers: { Accept: "application/json" } }).then(async (res) => {
     const data = res.headers.get("content-type")?.includes("json") ? await res.json() : null
@@ -377,6 +387,9 @@ export type TrackedTopic = {
   last_checked_at: string | null
   last_changed_at: string | null
   error: string | null
+  ttl_days: number | null // own TTL: null = the default (by hand: none; grabbed: the setting), 0 = never
+  ttl: number | null // effective days without an update before it's untracked; null = never
+  expires_at: string | null
   releases: string[]
   in_queue: number
   torrent: {
@@ -391,6 +404,41 @@ export type TrackedTopic = {
   } | null
 }
 export type TrackedView = { error: string | null; items: TrackedTopic[] }
+
+/** Downloads page: one topic torrent RuTrackarr manages (releases in progress, tracked topics). */
+export type ManagedDownload = {
+  hash: string
+  topic_id: number | null
+  topic_url: string | null
+  title: string
+  status: DownloadStatus
+  state: string | null
+  progress: number | null
+  size: number | null
+  dlspeed: number | null
+  upspeed: number | null
+  eta: number | null
+  ratio: number | null
+  uploaded: number | null
+  downloaded: number | null
+  num_seeds: number | null
+  num_leechs: number | null
+  category: string | null
+  tracked: {
+    source: "manual" | "grab"
+    state: "active" | "paused" | "gone"
+    last_update: string
+    ttl: number | null
+    expires_at: string | null
+  } | null
+  releases: { release: string; app: "Sonarr" | "Radarr"; category: string; in_queue: boolean | null }[]
+}
+export type ManagedDownloadsView = {
+  configured: boolean
+  error: string | null
+  items: ManagedDownload[]
+  totals: { torrents: number; tracked: number; downloading: number; dlspeed: number; upspeed: number; size: number } | null
+}
 
 export type TrackingView = {
   manual: number

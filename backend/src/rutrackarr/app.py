@@ -12,6 +12,7 @@ from rutrackarr.activity import Activity
 from rutrackarr.alerts import Alerts
 from rutrackarr.api import alerts as alerts_api
 from rutrackarr.api import arr as arr_api
+from rutrackarr.api import downloads as downloads_api
 from rutrackarr.api import overrides as overrides_api
 from rutrackarr.api import rutracker as rutracker_api
 from rutrackarr.api import sandbox as sandbox_api
@@ -140,6 +141,7 @@ def create_app(
     app.include_router(overrides_api.router, prefix=f"{base}/api")
     app.include_router(sandbox_api.router, prefix=f"{base}/api")
     app.include_router(tracked_api.router, prefix=f"{base}/api")
+    app.include_router(downloads_api.router, prefix=f"{base}/api")
 
     # Built SPA: static assets + index.html fallback for client-side routes.
     # The build uses relative asset URLs; <base href> carries the URL base.
