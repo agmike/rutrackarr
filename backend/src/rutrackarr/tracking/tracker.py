@@ -28,8 +28,9 @@ from rutrackarr.activity import Activity
 from rutrackarr.db.models import TrackedRow
 from rutrackarr.qbit import topics
 from rutrackarr.qbit.upstream import Qbit
+from rutrackarr.releases.episodes import season_marks
 from rutrackarr.releases.language import assess
-from rutrackarr.releases.naming import file_tag, release_name, tagged, untagged
+from rutrackarr.releases.naming import file_tag, release_name, renamed_from, tagged
 from rutrackarr.releases.sections import classify
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
@@ -535,11 +536,18 @@ class Tracker:
                 )
                 new_files = [old_root + f[len(new_root) :] for f in new_files]
             # Same files keep the names they have on disk (whatever tag they got back then), so
-            # the recheck finds them; new files get the topic's current tag.
+            # the recheck finds them — matched forwards from the new torrent's original names;
+            # new files get the topic's current tag (and episode mark, for a later season's
+            # topic numbered from 1).
             new_tag = _tag(title, t.forum)
-            on_disk = {untagged(o): o for o in old_files}
+            ep = parse_title(title).episodes
+            marks = season_marks(
+                new_files, t.season if t.content_kind == "tv" else None,
+                ep.first if ep else None, ep.last if ep else None,
+            )  # fmt: skip
             for f in new_files:
-                target = on_disk.get(f) or tagged(f, new_tag)
+                same = [o for o in old_files if renamed_from(f, o)]
+                target = same[0] if same else tagged(f, new_tag, marks.get(f))
                 if target != f:
                     await self._qbit.post(
                         "torrents/renameFile", hash=new_hash, oldPath=f, newPath=target

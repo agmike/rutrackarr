@@ -7,7 +7,9 @@ import logging
 from typing import Any
 
 from rutrackarr.qbit.upstream import Qbit, QbitError
-from rutrackarr.releases.naming import tagged
+from rutrackarr.releases.episodes import season_marks
+from rutrackarr.releases.naming import tagged, untagged, with_mark
+from rutrackarr.releases.title import parse_title
 
 log = logging.getLogger(__name__)
 ADD_WAIT_SECONDS = 15
@@ -63,6 +65,31 @@ async def rename(qbit: Qbit, rhash: str, tag: str) -> None:
             r = await qbit.post("torrents/renameFile", hash=rhash, oldPath=old, newPath=new)
             if r.status_code != 200:
                 log.warning("qbit rename %s: HTTP %s", old, r.status_code)
+
+
+async def mark_episodes(qbit: Qbit, rhash: str, season: int | None, title: str) -> int:
+    """A later season's topic numbering its files from 1 ("Show II - 01.mkv"): each video file
+    gets the episode as Sonarr numbers it after the marker ("… -RuTracker S02E01.mkv"), or
+    Sonarr reads "01" as absolute episode 1 (S01E01) and refuses the import. Idempotent.
+    → files renamed."""
+    found = await files(qbit, rhash)
+    names = [str(f.get("name", "")) for f in found]
+    originals = [untagged(n) for n in names]
+    e = parse_title(title).episodes if title else None
+    marks = season_marks(originals, season, e.first if e else None, e.last if e else None)
+    done = 0
+    for name, original in zip(names, originals, strict=True):
+        if original not in marks:
+            continue
+        new = with_mark(name, marks[original])
+        if new == name:
+            continue
+        r = await qbit.post("torrents/renameFile", hash=rhash, oldPath=name, newPath=new)
+        if r.status_code != 200:
+            log.warning("qbit rename %s: HTTP %s", name, r.status_code)
+        else:
+            done += 1
+    return done
 
 
 async def move(qbit: Qbit, rhash: str, category: str) -> None:

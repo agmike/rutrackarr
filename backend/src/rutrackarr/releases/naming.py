@@ -242,23 +242,62 @@ def file_tag(release: str) -> str:
     return " ".join([*dict.fromkeys(_FILE_TOKENS.findall(release)), "-RuTracker"])
 
 
-def tagged(path: str, tag: str) -> str:
-    """ "Show/Ep 01.mkv" → "Show/Ep 01 <tag>.mkv" (video files only, at most once)."""
+# What RuTrackarr appends to a video file's name: tag tokens, the marker, and for a later
+# season's topic that numbers its episodes from 1, the episode as Sonarr numbers it (after the
+# marker, where an original name never has anything — "… RTA-T1 -RuTracker S02E01.mkv").
+_TAGGED = re.compile(r"^(?P<base>.*) -RuTracker(?: S\d{2,3}E\d{2,4})?$")
+
+
+def tagged(path: str, tag: str, mark: str | None = None) -> str:
+    """ "Show/Ep 01.mkv" → "Show/Ep 01 <tag>.mkv", with `mark` "Show/Ep 01 <tag> S02E01.mkv"
+    (video files only, at most once)."""
     head, sep, name = path.rpartition("/")
     stem, dot, ext = name.rpartition(".")
-    if not dot or f".{ext.lower()}" not in VIDEO_EXTS or stem.endswith(f" {tag}"):
+    if not dot or f".{ext.lower()}" not in VIDEO_EXTS or _TAGGED.match(stem):
         return path
-    return f"{head}{sep}{stem} {tag}.{ext}"
+    return f"{head}{sep}{stem} {tag}{f' {mark}' if mark else ''}.{ext}"
+
+
+def with_mark(path: str, mark: str) -> str:
+    """A tagged video file's name with its episode mark set ("… -RuTracker S02E01.mkv");
+    untagged files are left alone."""
+    head, sep, name = path.rpartition("/")
+    stem, dot, ext = name.rpartition(".")
+    m = _TAGGED.match(stem) if dot else None
+    if m is None:
+        return path
+    return f"{head}{sep}{m['base']} -RuTracker {mark}.{ext}"
 
 
 def untagged(path: str) -> str:
     """The file name before RuTrackarr tagged it: "Show/Ep 01 OrigAudio RusSubs RTA-T1
-    -RuTracker.mkv" → "Show/Ep 01.mkv" (whatever tokens the tag had)."""
+    -RuTracker S02E01.mkv" → "Show/Ep 01.mkv" (whatever tokens the tag had). Approximate when
+    the original name itself ended in a tag-like word — compare with `renamed_from` instead
+    where it matters."""
     head, sep, name = path.rpartition("/")
     stem, dot, ext = name.rpartition(".")
-    if not dot or not stem.endswith(" -RuTracker"):
+    m = _TAGGED.match(stem) if dot else None
+    if m is None:
         return path
-    words = stem[: -len(" -RuTracker")].split(" ")
+    words = m["base"].split(" ")
     while len(words) > 1 and _FILE_TOKENS.fullmatch(words[-1]):
         words.pop()
     return f"{head}{sep}{' '.join(words)}.{ext}"
+
+
+def renamed_from(original: str, name: str) -> bool:
+    """`name` is the file `original` (a name from the .torrent) as RuTrackarr may have renamed
+    it: unchanged, or with tag tokens (whichever tag it got back then), the marker and an episode
+    mark appended. Compared forwards from the original, so it's exact."""
+    if name == original:
+        return True
+    ohead, _, oname = original.rpartition("/")
+    nhead, _, nname = name.rpartition("/")
+    if ohead != nhead:
+        return False
+    ostem, odot, oext = oname.rpartition(".")
+    nstem, ndot, next_ = nname.rpartition(".")
+    if not (odot and ndot) or oext != next_ or not nstem.startswith(f"{ostem} "):
+        return False
+    m = re.fullmatch(r"((?:\S+ )*)-RuTracker(?: S\d{2,3}E\d{2,4})?", nstem[len(ostem) + 1 :])
+    return m is not None and all(_FILE_TOKENS.fullmatch(w) for w in m.group(1).split())

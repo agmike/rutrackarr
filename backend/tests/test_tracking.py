@@ -520,3 +520,94 @@ def test_downloads_page(api, net, qbit):  # noqa: F811
     status["code"] = 500
     items = api.get("/api/downloads").json()["items"]
     assert len(items) == 1 and items[0]["releases"][0]["in_queue"] is None
+
+
+# --- 0.16.2: later seasons numbered from 1 get "SxxEyy" after the marker ------------------------
+
+S2_TOPIC = "Kusuriya no Hitorigoto 2nd Season [TV] [1-2 из 24] [BDRip 1080p]"
+S2_EP = "Kusuriya no Hitorigoto II - {n:02d} [BDRip 1080p HEVC]"
+S2_FILES = [
+    *(f"{S2_EP.format(n=n)}.mkv" for n in (1, 2)),
+    *(f"RUS Sound [AniLibria]/{S2_EP.format(n=n)}.mka" for n in (1, 2)),
+]
+TAG = "OrigAudio RusSoftSubs RTA-T1 -RuTracker"
+
+
+def test_naming_marks_and_forward_matching():
+    from rutrackarr.releases.naming import renamed_from, tagged, untagged, with_mark
+
+    o = "Show/Show II - 01 [BDRip].mkv"
+    t = tagged(o, TAG, "S02E01")
+    assert t == "Show/Show II - 01 [BDRip] OrigAudio RusSoftSubs RTA-T1 -RuTracker S02E01.mkv"
+    assert untagged(t) == o and tagged(t, TAG) == t  # reversible; never tagged twice
+    assert with_mark(tagged(o, TAG), "S02E01") == t and with_mark(o, "S02E01") == o
+    assert renamed_from(o, t) and renamed_from(o, o)
+    assert renamed_from(o, tagged(o, "RusVoice RTA-T2 -RuTracker"))  # an older tag
+    assert not renamed_from("Show/Show II - 1.mkv", t)  # another file
+    assert not renamed_from(o, t.replace("Show/", "Other/"))  # another folder
+    # An original ending in a tag-like word or "SxxEyy" is matched exactly forwards.
+    o2 = "Show/Show S02E01 RusSubs.mkv"
+    assert renamed_from(o2, tagged(o2, TAG)) and untagged(tagged(o2, TAG)) == "Show/Show S02E01.mkv"
+
+
+def test_season_marks():
+    from rutrackarr.releases.episodes import season_marks
+
+    vids = [f"{S2_EP.format(n=n)}.mkv" for n in (1, 2)]
+    assert season_marks(S2_FILES, 2, 1, 2) == {vids[0]: "S02E01", vids[1]: "S02E02"}
+    assert season_marks(S2_FILES, 1, 1, 2) == {}  # season 1: absolute = season numbering
+    assert season_marks(S2_FILES, None) == {}
+    absolute = [f"Show - {n}.mkv" for n in (25, 26)]
+    assert season_marks(absolute, 2, 25, 26) == {}  # Sonarr maps absolute numbers itself
+    explicit = [f"Show S02E0{n}.mkv" for n in (1, 2)]
+    assert season_marks(explicit, 2) == {}
+
+
+def test_later_season_grab_gets_episode_marks(api, net, qbit):  # noqa: F811
+    data, real = make_torrent(S2_TOPIC, S2_FILES)
+    net.on("GET", "/forum/dl.php", httpx.Response(200, content=data))
+    release = "Kusuriya no Hitorigoto S02 1080p BluRay JAPANESE RUSSIAN " + TAG
+    r = api.get(
+        "/torznab/download/6830000",
+        params={"apikey": key(api), "name": release, "tvdbid": "431162", "season": "2"},
+    )
+    login(api)
+    assert add(api, r.content).text == "Ok."
+    names = qbit.files[real.lower()]
+    videos = sorted(n for n in names if n.endswith(".mkv"))
+    assert [v.rsplit(" ", 1)[-1] for v in videos] == ["S02E01.mkv", "S02E02.mkv"]
+    assert all(" -RuTracker S02E0" in v for v in videos)
+    assert not any(n.endswith(".mka") and "RuTracker" in n for n in names)  # tracks untouched
+    # Adding it again (another grab) renames nothing twice.
+    add(api, r.content)
+    assert sorted(n for n in qbit.files[real.lower()] if n.endswith(".mkv")) == videos
+    # The companion script finds the marked video and its tracks.
+    virtual = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()[0]
+    src = f"/data/download/sonarr/{videos[1]}"
+    r = api.get(
+        "/torznab/companions",
+        params={"hash": virtual["hash"], "source": src, "apikey": key(api)},
+    )
+    assert r.status_code == 200, r.text
+    lines = [line.split("\t") for line in r.text.splitlines()]
+    assert lines[0] == ["#video", videos[1].split("/", 1)[1]]  # inside the torrent folder
+    assert [p for p, _ in lines[1:]] == [f"RUS Sound [AniLibria]/{S2_EP.format(n=2)}.mka"]
+
+
+def test_update_keeps_marked_names_and_marks_new_episodes(api, net, qbit):  # noqa: F811
+    test_later_season_grab_gets_episode_marks(api, net, qbit)
+    old = next(h for h in qbit.torrents)
+    old_files = list(qbit.files[old])
+    new_files = [*S2_FILES, f"{S2_EP.format(n=3)}.mkv"]
+    new_data, new_hash = make_torrent(S2_TOPIC, new_files)
+    for path in ("torrents/recheck", "torrents/renameFolder"):
+        net.on("POST", f"/api/v2/{path}", qbit.handle)
+    title = S2_TOPIC.replace("[1-2 из 24]", "[1-3 из 24]")
+    net.routes[("GET", "/forum/viewtopic.php")] = [topic_page_with(title, new_hash)]
+    net.routes[("GET", "/forum/dl.php")] = [httpx.Response(200, content=new_data)]
+    assert tracked(api)[6830000]["season"] == 2
+    assert api.post("/api/tracked/6830000/check").json() == {"result": "updated"}
+    new = new_hash.lower()
+    assert set(old_files) <= set(qbit.files[new])  # marked names kept: the recheck finds them
+    (added,) = set(qbit.files[new]) - set(old_files)
+    assert added.endswith(" -RuTracker S02E03.mkv")

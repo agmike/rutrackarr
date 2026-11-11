@@ -76,6 +76,11 @@ score low, or be rejected, on import. RuTrackarr can stand in front of your qBit
 Torrents grabbed from RuTrackarr then go through it: the topic is added to qBittorrent
 stopped, its video files get the release's language tags appended (`… OrigAudio RusSubs
 RTA-T1 -RuTracker.mkv`), and then it starts. Everything else is passed through unchanged.
+A later season's topic that numbers its files from 1 without saying the season
+(`Show II - 01.mkv`, which Sonarr would read as absolute episode 1, i.e. S01E01) also gets the
+episode as Sonarr numbers it, after the marker: `… -RuTracker S02E01.mkv`. Topic updates keep the
+names files have on disk (matched from the new torrent's original names) and tag new files the
+same way.
 Each grab is its own download in Sonarr (several grabs of one topic share one torrent), and
 finished downloads are reported as still seeding, so files are hardlinked or copied, never
 moved away from a torrent that keeps seeding. With a post-import category set, the topic's

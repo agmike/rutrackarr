@@ -2,6 +2,7 @@
 
 import logging
 import time
+from pathlib import PurePosixPath
 from typing import Any
 from urllib.parse import urlencode
 
@@ -11,7 +12,7 @@ from rutrackarr import __version__
 from rutrackarr.activity import caller_of
 from rutrackarr.releases.companions import find_video, plan
 from rutrackarr.releases.companions import fonts as _fonts
-from rutrackarr.releases.naming import file_tag, tagged
+from rutrackarr.releases.naming import file_tag, renamed_from, tagged
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
 from rutrackarr.rutracker.errors import RuTrackerError
@@ -240,13 +241,20 @@ def companions(request: Request, hash: str = "", source: str = "", fonts: bool =
     download = request.app.state.downloads.get(hash)
     if download is None:
         return Response("Not a RuTrackarr download\n", media_type="text/plain", status_code=404)
-    # Added through the qBittorrent proxy: video files carry the release's tag on disk.
-    tag = file_tag(download.release) if download.release and download.real_hash else None
-    on_disk = {tagged(f, tag) if tag else f: f for f in download.files}
-    found = find_video(list(on_disk), source)
-    if found is None:
+    # Added through the qBittorrent proxy, video files are renamed on disk (the release's tag,
+    # maybe an episode mark, maybe an older tag after a topic update): matched forwards from the
+    # torrent's original names.
+    name = PurePosixPath(source.replace("\\", "/")).name
+    hits = [f for f in download.files if renamed_from(PurePosixPath(f).name, name)]
+    if not hits:  # last resort: case differences
+        tag = file_tag(download.release) if download.release and download.real_hash else None
+        on_disk = {tagged(f, tag) if tag else f: f for f in download.files}
+        if (folded := find_video(list(on_disk), source)) is not None:
+            hits = [on_disk[folded]]
+    if not hits:
         return Response("Video not in this torrent\n", media_type="text/plain", status_code=404)
-    video = on_disk[found]
+    video = hits[0]
+    found = str(PurePosixPath(video).parent / name) if "/" in video else name
     title = parse_title(download.title) if download.title else None
     lines = [f"#video\t{found}"] + [
         f"{c.path}\t{c.suffix}" for c in plan(download.files, video, title)

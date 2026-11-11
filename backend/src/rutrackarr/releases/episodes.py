@@ -67,6 +67,28 @@ def episode_numbers(
     return {}
 
 
+_SEASON_EPISODE = re.compile(r"(?i)\bS\d{1,2}[ ._-]?E\d{1,4}")
+
+
+def season_marks(
+    files: list[str], season: int | None, first: int | None = None, last: int | None = None
+) -> dict[str, str]:
+    """Video file → "S02E01" for a topic of season 2 or later whose files number its episodes
+    from 1 without saying the season ("Show II - 01.mkv"): Sonarr would read the bare number as
+    an absolute episode (→ S01E01) and refuse the import. {} when the files already say
+    "SxxEyy", the numbers don't start at 1 (absolute numbering: Sonarr maps those itself), or
+    which file is which episode can't be told."""
+    if season is None or season < 2:
+        return {}
+    vids = videos(files)
+    if not vids or any(_SEASON_EPISODE.search(PurePosixPath(f).stem) for f in vids):
+        return {}
+    numbers = episode_numbers(files, first, last)
+    if not numbers or min(numbers) != 1:
+        return {}
+    return {f: f"S{season:02d}E{n:02d}" for n, f in numbers.items()}
+
+
 def episode_file(
     files: list[str], n: int, first: int | None = None, last: int | None = None
 ) -> str | None:

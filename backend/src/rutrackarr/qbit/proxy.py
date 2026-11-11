@@ -202,6 +202,8 @@ class _Proxy:
             await self._move(rhash, category)
         self.store.added(virtual_info, release, rhash, category)
         if (grabbed := self.store.get(virtual_info.info_hash)) is not None:
+            if grabbed.content_kind == "tv":
+                await topics.mark_episodes(self.qbit, rhash, grabbed.season, grabbed.title or "")
             await self.tracker.on_grab(grabbed, rhash)
             await self._files_for(grabbed, rhash, fresh=not present)
         how = "files tagged, started" if not want_stopped else "files tagged, stopped"
