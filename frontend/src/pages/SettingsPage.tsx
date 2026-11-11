@@ -141,7 +141,7 @@ const tracking: FieldSpec[] = [
     label: "qBittorrent category for topics tracked by hand",
     type: "text",
     placeholder: "rutrackarr/tracked",
-    help: "Create it in qBittorrent/qui (with a save path) — RuTrackarr can't through qui's proxy. Use one no Sonarr/Radarr download client asks for: not a parent or child of their categories.",
+    help: "An existing qBittorrent category, kept apart from Sonarr's/Radarr's (not inside or above theirs) so these downloads stay out of their folders and download lists.",
   },
   {
     key: "tracking.feed_minutes",
