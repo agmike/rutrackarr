@@ -26,6 +26,7 @@ class FakeQbit:
 
     def __init__(self) -> None:
         self.torrents: dict[str, dict] = {}
+        self.unlisted: set[str] = set()  # present, but missing from torrents/info (a lagging list)
         self.files: dict[str, list[str]] = {}
         self.added: list[dict] = []
         self.calls: list[str] = []
@@ -59,7 +60,7 @@ class FakeQbit:
         if path == "app/webapiVersion":
             return httpx.Response(200, text="2.11.4")
         if path == "torrents/info":
-            out = list(self.torrents.values())
+            out = [t for h, t in self.torrents.items() if h not in self.unlisted]
             if "hashes" in p:
                 out = [t for t in out if t["hash"] in p["hashes"].split("|")]
             if "category" in p:

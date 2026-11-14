@@ -4,6 +4,7 @@ files renamed with the release's language tag, then started. Shared by the downl
 
 import asyncio
 import logging
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from rutrackarr.qbit.upstream import Qbit, QbitError
@@ -13,6 +14,23 @@ from rutrackarr.releases.title import parse_title
 
 log = logging.getLogger(__name__)
 ADD_WAIT_SECONDS = 15
+# A torrent added this recently is never taken for gone: a torrent list can lag a fresh add (qui's
+# client proxy answers from its synced copy of qBittorrent's state).
+GONE_GRACE = timedelta(minutes=2)
+
+
+async def gone(qbit: Qbit, rhash: str, since: datetime | None = None) -> bool:
+    """A torrent missing from a torrent list is really gone: not added within GONE_GRACE, and
+    qBittorrent itself doesn't know the hash (404 for its properties). Anything else — just
+    added, found, an error — is not proof."""
+    if since is not None and datetime.now(UTC) - since < GONE_GRACE:
+        return False
+    try:
+        r = await qbit.request("GET", "torrents/properties", params={"hash": rhash.lower()})
+    except Exception as e:  # unreachable is not gone
+        log.warning("properties of %s: %s", rhash, e)
+        return False
+    return r.status_code == 404
 
 
 async def present(qbit: Qbit, rhash: str) -> dict[str, Any] | None:

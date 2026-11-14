@@ -12,6 +12,7 @@ import httpx
 from fastapi import APIRouter, Request
 
 from rutrackarr import REPOSITORY, __commit__, __version__
+from rutrackarr.qbit import topics
 from rutrackarr.qbit.proxy import forget_gone
 from rutrackarr.qbit.upstream import QbitError
 
@@ -261,7 +262,8 @@ async def downloads(request: Request) -> dict[str, Any]:
     for d in active:
         t = reals.get(d.real_hash or "")
         if t is None and error is None:
-            forget_gone(store, activity, d, request.app.state.tracker)
+            if d.real_hash and await topics.gone(qbit, d.real_hash, d.added_at):
+                forget_gone(store, activity, d, request.app.state.tracker)
             continue
         items.append(
             {

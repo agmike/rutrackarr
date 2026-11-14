@@ -287,8 +287,9 @@ class _Proxy:
             for d in wanted:
                 if (real := reals.get(d.real_hash or "")) is not None:
                     out.append(_virtual(real, d, _file(files, d)))
-                else:
+                elif d.real_hash and await topics.gone(self.qbit, d.real_hash, d.added_at):
                     forget_gone(self.store, self.activity, d, self.tracker)
+                # else: not listed (yet) — left out of this answer, kept
         return Response(_json(out), media_type="application/json")
 
     async def _files_of(self, reals: set[str | None]) -> dict[str, list[dict[str, Any]]]:

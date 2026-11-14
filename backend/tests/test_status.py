@@ -90,7 +90,7 @@ def events(api):  # noqa: F811
     return [(e["kind"], e["message"]) for e in api.get("/api/status/events").json()["items"]]
 
 
-def test_downloads_and_activity(api, net, qbit):  # noqa: F811
+def test_downloads_and_activity(api, net, qbit, monkeypatch):  # noqa: F811
     assert connections(api)["qbittorrent"]["state"] == "error"  # fake has no app/version
     data, marked = serve(api, net)
     assert events(api)[0][0] == "grab" and RELEASE in events(api)[0][1]
@@ -114,8 +114,16 @@ def test_downloads_and_activity(api, net, qbit):  # noqa: F811
     qbit.torrents[real] |= {"progress": 1.0, "state": "stalledUP"}
     assert api.get("/api/status/downloads").json()["items"][0]["status"] == "seeding"
 
-    # The topic torrent disappears: the release is forgotten, the log says so.
+    # The topic torrent disappears: the release is forgotten, the log says so (once it's past the
+    # grace period for fresh adds, and qBittorrent confirms it doesn't know the hash).
     del qbit.torrents[real]
+    assert api.get("/api/status/downloads").json()["items"] == []
+    assert events(api)[0][0] != "gone"  # just added: a lagging list isn't proof
+    from datetime import timedelta
+
+    from rutrackarr.qbit import topics
+
+    monkeypatch.setattr(topics, "GONE_GRACE", timedelta(0))
     assert api.get("/api/status/downloads").json()["items"] == []
     kind, message = events(api)[0]
     assert kind == "gone" and RELEASE in message

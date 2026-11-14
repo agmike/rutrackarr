@@ -611,3 +611,36 @@ def test_update_keeps_marked_names_and_marks_new_episodes(api, net, qbit):  # no
     assert set(old_files) <= set(qbit.files[new])  # marked names kept: the recheck finds them
     (added,) = set(qbit.files[new]) - set(old_files)
     assert added.endswith(" -RuTracker S02E03.mkv")
+
+
+# --- 0.16.3: a torrent missing from a (lagging) list isn't taken for gone -------------------------
+
+
+def test_lagging_list_does_not_forget_a_fresh_grab(api, net, qbit, monkeypatch):  # noqa: F811
+    from datetime import timedelta
+
+    from rutrackarr.qbit import topics
+
+    _grab(api, net, tvdbid="424242", season="1")
+    real = next(iter(qbit.torrents))
+    virtual = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
+    assert [t["name"] for t in virtual] == [RELEASE]
+    # Just added and not listed yet (qui's synced copy lagging): left out, nothing forgotten.
+    qbit.unlisted.add(real)
+    assert api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json() == []
+    assert api.get("/api/status/downloads").json()["items"] == []
+    # Past the grace period, but qBittorrent still knows the hash: still not gone.
+    monkeypatch.setattr(topics, "GONE_GRACE", timedelta(0))
+    api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY})
+    api.get("/api/status/downloads")
+    qbit.unlisted.clear()
+    virtual = api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json()
+    assert [t["name"] for t in virtual] == [RELEASE]  # Sonarr's release is back, same hash
+    assert tracked(api)[6830000]["state"] == "active"
+    events = api.get("/api/status/events").json()["items"]
+    assert not any(e["kind"] == "gone" for e in events)
+    # Really deleted: forgotten (once qBittorrent says it doesn't know the hash).
+    qbit.torrents.pop(real)
+    assert api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json() == []
+    assert tracked(api)[6830000]["state"] == "gone"
+    assert any(e["kind"] == "gone" for e in api.get("/api/status/events").json()["items"])

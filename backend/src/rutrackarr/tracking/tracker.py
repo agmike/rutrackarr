@@ -510,8 +510,9 @@ class Tracker:
         old_hash = t.info_hash.lower()
         old = await topics.present(self._qbit, old_hash)
         if old is None:
-            self.gone(t.info_hash)
-            return
+            if await topics.gone(self._qbit, old_hash, t.created_at):
+                self.gone(t.info_hash)
+            return  # not listed (yet): the next check tries again
         new = torrent.read(data)
         new_hash = new.info_hash.lower()
         if await topics.present(self._qbit, new_hash) is None:
