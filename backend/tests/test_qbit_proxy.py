@@ -98,7 +98,16 @@ class FakeQbit:
         hashes = p.get("hashes", "").split("|")
         if path == "torrents/start":
             for x in hashes:
-                self.torrents[x]["state"] = "downloading"
+                if not self.torrents[x]["state"].startswith("checking"):  # no-op while checking
+                    self.torrents[x]["state"] = "downloading"
+            return httpx.Response(200)
+        if path == "torrents/recheck":
+            # qBittorrent: a stopped torrent is started for the check and stopped again when
+            # it's done (finish_checks); a start during the check doesn't cancel that.
+            for x in hashes:
+                t = self.torrents[x]
+                t["stop_after_check"] = t["state"].startswith(("stopped", "paused"))
+                t["state"] = "checkingDL"
             return httpx.Response(200)
         if path == "torrents/delete":
             for x in hashes:
@@ -110,6 +119,11 @@ class FakeQbit:
                 self.torrents[x]["category"] = p["category"]
             return httpx.Response(200)
         return httpx.Response(200)
+
+    def finish_checks(self) -> None:
+        for t in self.torrents.values():
+            if t["state"].startswith("checking"):
+                t["state"] = "stoppedDL" if t.pop("stop_after_check", False) else "downloading"
 
     def add(self, request: httpx.Request) -> httpx.Response:
         head = f"Content-Type: {request.headers['content-type']}\r\n\r\n".encode()

@@ -553,9 +553,12 @@ class Tracker:
                     await self._qbit.post(
                         "torrents/renameFile", hash=new_hash, oldPath=f, newPath=target
                     )
+            # Started before the recheck, whatever state the old torrent was in (a seeding rule
+            # may have stopped it): the update is there to download the new episodes. A recheck
+            # of a stopped torrent stops it again once the check is done, and a start during
+            # the check doesn't undo that.
+            await topics.start(self._qbit, new_hash)
             await self._qbit.post("torrents/recheck", hashes=new_hash)
-            if not str(old.get("state", "")).startswith(("stopped", "paused")):
-                await topics.start(self._qbit, new_hash)
         await topics.delete(self._qbit, old_hash, delete_files=False)
         self._downloads.repoint(old_hash, new_hash)
         before = parse_title(t.title).episodes

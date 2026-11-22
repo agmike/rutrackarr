@@ -644,3 +644,38 @@ def test_lagging_list_does_not_forget_a_fresh_grab(api, net, qbit, monkeypatch):
     assert api.get("/qbit/api/v2/torrents/info", params={"category": CATEGORY}).json() == []
     assert tracked(api)[6830000]["state"] == "gone"
     assert any(e["kind"] == "gone" for e in api.get("/api/status/events").json()["items"])
+
+
+# --- 0.16.4: an update's new torrent is started, and stays started after its recheck -------------
+
+
+def _update_with_old_state(api, net, qbit, state):  # noqa: F811
+    _, old = track_by_url(api, net)
+    qbit.torrents[old]["state"] = state
+    new_ep = "[SubsPlus+] Nia Liston - The Merciless Maiden - S01E03 (ADN WEB-DL 1080p AVC AAC) [ABCDEF12].mkv"
+    new_data, new_hash = make_torrent(TOPIC, [*NIA_FILES, new_ep])
+    for path in ("torrents/recheck", "torrents/renameFolder"):
+        net.on("POST", f"/api/v2/{path}", qbit.handle)
+    net.routes[("GET", "/forum/viewtopic.php")] = [
+        topic_page_with(TOPIC + " [1-3 из 12]", new_hash)
+    ]
+    net.routes[("GET", "/forum/dl.php")] = [httpx.Response(200, content=new_data)]
+    assert api.post("/api/tracked/6830000/check").json() == {"result": "updated"}
+    new = new_hash.lower()
+    # Renamed while stopped, then started, then rechecked: a start during the check is lost.
+    calls = [
+        c for c in qbit.calls if c in ("torrents/renameFile", "torrents/start", "torrents/recheck")
+    ]
+    assert calls.index("torrents/start") < calls.index("torrents/recheck")
+    assert calls[-1] == "torrents/recheck"
+    qbit.finish_checks()
+    return qbit.torrents[new]["state"]
+
+
+def test_update_starts_new_torrent_after_recheck(api, net, qbit):  # noqa: F811
+    assert _update_with_old_state(api, net, qbit, "uploading") == "downloading"
+
+
+def test_update_starts_new_torrent_when_old_was_stopped(api, net, qbit):  # noqa: F811
+    # Stopped by a seeding rule (or anything else): the new episodes still get downloaded.
+    assert _update_with_old_state(api, net, qbit, "stoppedUP") == "downloading"
