@@ -22,6 +22,8 @@ import hashlib
 import hmac
 import json
 import logging
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import PurePosixPath
 from typing import Any
 
@@ -36,13 +38,17 @@ from rutrackarr.releases.episodes import episode_file
 from rutrackarr.releases.naming import file_tag, untagged
 from rutrackarr.releases.title import parse_title
 from rutrackarr.rutracker import torrent
-from rutrackarr.torznab.downloads import Download, DownloadStore
+from rutrackarr.torznab.downloads import Download, DownloadStore, app_of
+from rutrackarr.tracking.tracker import queued
 
 log = logging.getLogger(__name__)
 router = APIRouter()
 
 COOKIE = "SID"
 FINISHED_STOPPED = {"pausedUP", "stoppedUP"}
+# A release added this recently counts as queued even if the app's queue doesn't list it yet
+# (Sonarr/Radarr only see a grab once they've polled the client).
+DUPLICATE_GRACE = timedelta(minutes=10)
 
 
 def _token(api_key: str) -> str:
@@ -73,9 +79,10 @@ async def api(path: str, request: Request) -> Response:
     if not qbit.configured():
         return _text("RuTrackarr: qBittorrent is not configured", 502)
     await request.body()  # cached: forwarded as is, and parsed as a form where needed
+    settings, transport = request.app.state.settings_service, request.app.state.http_transport
     proxy = _Proxy(
         qbit, request.app.state.downloads, request.app.state.activity, request.app.state.tracker,
-        request.app.state.settings_service.get,
+        settings.get, lambda app: queued(settings, app, transport),
     )  # fmt: skip
     try:
         if path == "torrents/add" and request.method == "POST":
@@ -117,10 +124,16 @@ async def _params(request: Request) -> dict[str, str]:
 
 class _Proxy:
     def __init__(
-        self, qbit: Qbit, store: DownloadStore, activity: Activity, tracker: Any, settings: Any
+        self,
+        qbit: Qbit,
+        store: DownloadStore,
+        activity: Activity,
+        tracker: Any,
+        settings: Any,
+        queue: Callable[[str], Awaitable[set[str] | None]],
     ) -> None:
         self.qbit, self.store, self.activity, self.tracker = qbit, store, activity, tracker
-        self.settings = settings
+        self.settings, self.queue = settings, queue  # queue(app): its download ids, or None
         self._active: list[Download] | None = None
 
     def active(self) -> list[Download]:
@@ -183,6 +196,19 @@ class _Proxy:
         virtual_info, real_info = torrent.read(data), torrent.read(real)
         rhash = real_info.info_hash.lower()
         category = fields.get("category", "")
+        if (first := await self._duplicate_of(virtual_info.info_hash, rhash, category)) is not None:
+            # The same episodes from the same topic, still queued under another release name
+            # (e.g. Sonarr's RSS sync and a search grabbing it under two of the series' titles):
+            # "Ok." but not listed, or the app gets two queue items for one torrent and imports
+            # the same files twice. A grab Sonarr/Radarr can't see in the client is just dropped.
+            self.activity.event(
+                "duplicate",
+                f"Duplicate grab ignored: {release} — already queued as "
+                f"{first.release or first.name}",
+                topic_id=first.topic_id or None,
+            )  # fmt: skip
+            log.info("qbit add: %s duplicates %s, not listed", release, first.info_hash)
+            return True
         want_stopped = "true" in (
             fields.get("stopped", "").lower(),
             fields.get("paused", "").lower(),
@@ -214,6 +240,27 @@ class _Proxy:
         )
         log.info("qbit add: %s → %s (%s)", release, rhash, "new" if not present else "present")
         return True
+
+    async def _duplicate_of(self, vhash: str, rhash: str, category: str) -> Download | None:
+        """An earlier release of the same app for the same episodes of the same topic torrent
+        that's still in that app's queue (or was added a moment ago)."""
+        grab = self.store.get(vhash)
+        if grab is None or grab.content_kind is None or grab.content_id is None:
+            return None  # not known what it's for: can't tell a duplicate
+        what = (grab.content_kind, grab.content_id, grab.season, grab.episode)
+        candidates = [
+            d for d in self.store.active()
+            if d.info_hash != vhash and d.real_hash == rhash.upper() and d.category == category
+            and (d.content_kind, d.content_id, d.season, d.episode) == what
+        ]  # fmt: skip
+        if not candidates:
+            return None
+        now = datetime.now(UTC)
+        for d in candidates:
+            if d.added_at is not None and now - d.added_at < DUPLICATE_GRACE:
+                return d
+        q = await self.queue(app_of(category))
+        return next((d for d in candidates if q is not None and d.info_hash.upper() in q), None)
 
     async def _files_for(self, d: Download, rhash: str, fresh: bool) -> None:
         """A single-episode release: find its video file in the topic. With "download only the

@@ -15,7 +15,7 @@ from fastapi import APIRouter, Request
 
 from rutrackarr.api.status import _status
 from rutrackarr.qbit.upstream import QbitError
-from rutrackarr.torznab.downloads import Download
+from rutrackarr.torznab.downloads import Download, app_of
 from rutrackarr.tracking.tracker import Tracked, queued
 
 router = APIRouter(prefix="/downloads", tags=["downloads"])
@@ -25,10 +25,6 @@ FIELDS = (
     "num_seeds", "num_leechs", "category",
 )  # fmt: skip
 ORDER = {"downloading": 0, "stalled": 1, "queued": 2, "stopped": 3, "error": 4, "seeding": 5}
-
-
-def app_of(category: str | None) -> str:
-    return "radarr" if (category or "").lower().startswith(("radarr", "movie")) else "sonarr"
 
 
 @router.get("")

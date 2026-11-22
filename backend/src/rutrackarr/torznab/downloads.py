@@ -118,6 +118,11 @@ class DownloadStore:
             return _download(row) if row is not None else None
 
 
+def app_of(category: str | None) -> str:
+    """Which app a download client category belongs to."""
+    return "radarr" if (category or "").lower().startswith(("radarr", "movie")) else "sonarr"
+
+
 def _download(row: DownloadRow) -> Download:
     files = [path for path, _ in json.loads(row.files)]
     return Download(

@@ -85,6 +85,9 @@ Each grab is its own download in Sonarr (several grabs of one topic share one to
 finished downloads are reported as still seeding, so files are hardlinked or copied, never
 moved away from a torrent that keeps seeding. With a post-import category set, the topic's
 torrent moves there once all its releases have (and back when a new release of it is grabbed).
+A second grab of the same episodes of a topic under another release name while the first is
+still queued (Sonarr's RSS sync and a search racing, each finding the series under a different
+title) is accepted but not listed, so Sonarr has one queue item and imports once.
 
 RuTracker series topics are usually whole seasons, growing as episodes come out. For a single-
 episode search RuTrackarr also offers the episode on its own (`Show S01E05 …`), when it can tell
