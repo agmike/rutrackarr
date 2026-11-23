@@ -98,7 +98,7 @@ the topic downloads when other episodes are grabbed.
 The newest episodes of a tracked series topic updated in the last few days are offered the same
 way in the RSS feed, so Sonarr picks up a new episode without a search. Each release has its own
 GUID (the topic's URL for the topic itself, `…#e5` for its episode 5): Sonarr keeps one release
-per GUID.
+per GUID. An episode's size is its share of the topic's (Sonarr checks sizes per episode).
 
 Use categories that don't contain each other: in qBittorrent 5.2 a category also lists its
 subcategories, so e.g. `sonarr/default`, `sonarr/rutracker`, `sonarr/completed` — not `sonarr`

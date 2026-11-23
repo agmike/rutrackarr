@@ -285,6 +285,9 @@ def test_tracked_topic_answers_an_episode_search_itself(api, net):  # noqa: F811
     guids = [i.findtext("guid") for i in ET.fromstring(r.content).iter("item")]
     assert len(guids) == 2 and len(set(guids)) == 2  # the pack and its episode, both kept
     assert guids[0].endswith("?t=1")  # the pack keeps the topic's URL
+    # The episode is a third of the 3-episode topic: Sonarr checks it against per-episode limits.
+    sizes = [int(i.findtext("size")) for i in ET.fromstring(r.content).iter("item")]
+    assert sizes[1] * 3 <= sizes[0] < sizes[1] * 3 + 3
     assert seen == []  # RuTracker not asked
     titles(api, season="1", ep="5")  # not in the tracked topic: RuTracker is searched
     assert seen

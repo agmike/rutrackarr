@@ -69,11 +69,12 @@ def results(releases: list[Release], download_url, topic_url) -> bytes:  # type:
         ET.SubElement(item, "description").text = row.title
         if row.added:
             ET.SubElement(item, "pubDate").text = format_datetime(row.added)
-        ET.SubElement(item, "size").text = str(row.size)
+        size = rel.size if rel.size is not None else row.size
+        ET.SubElement(item, "size").text = str(size)
         for cid in rel.categories:
             ET.SubElement(item, "category").text = str(cid)
         ET.SubElement(
-            item, "enclosure", url=link, length=str(row.size), type="application/x-bittorrent"
+            item, "enclosure", url=link, length=str(size), type="application/x-bittorrent"
         )
         attrs = {
             "seeders": row.seeders,

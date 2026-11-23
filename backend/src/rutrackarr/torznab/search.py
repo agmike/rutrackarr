@@ -56,6 +56,7 @@ class Release:
     offset: int = 0
     original_language: str | None = None
     episode: int | None = None  # a single episode of a pack: its number in the topic's numbering
+    size: int | None = None  # a single episode of a pack: its share of the topic's size
 
 
 @dataclass
@@ -437,7 +438,11 @@ def single_episode(rel: Release, n: int) -> Release:
         series_title=rel.series_title, season=rel.season, offset=rel.offset,
         original_language=rel.original_language,
     )  # fmt: skip
-    return replace(rel, title=title, name=name, episode=n)
+    # Sonarr checks a release's size against the profile's per-episode limits: a single episode
+    # reported at the whole topic's size is "larger than maximum allowed".
+    count = (e.last - e.first + 1) if e and e.first is not None and e.last is not None else 1
+    size = rel.row.size // max(count, 1)
+    return replace(rel, title=title, name=name, episode=n, size=size)
 
 
 def wanted_episode(rel: Release, req: Request) -> int | None:
