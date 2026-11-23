@@ -19,6 +19,7 @@ class SonarrSeries:
     year: int | None
     series_type: str  # standard | daily | anime
     alternate_titles: list[str] = field(default_factory=list)
+    seasons: tuple[int, ...] = ()  # season numbers above 0 (specials left out)
 
 
 class SonarrTitles:
@@ -62,6 +63,11 @@ class SonarrTitles:
                 alternate_titles=[
                     a["title"] for a in s.get("alternateTitles") or [] if a.get("title")
                 ],
+                seasons=tuple(
+                    sorted(
+                        {n for x in s.get("seasons") or [] if (n := x.get("seasonNumber") or 0) > 0}
+                    )
+                ),
             )
             if s
             else None

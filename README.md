@@ -136,7 +136,7 @@ The token format is described in `docs/title-format.md`.
   in every Sonarr/Radarr search; a grab of one reuses the torrent that's already there. A tracked
   topic that has the episode asked for answers the search without RuTracker being asked — by
   season and episode, or by absolute number (Sonarr's anime searches: for an absolutely numbered
-  topic, or a first season) — and after
+  topic, or a series with a single season) — and after
   an update its newest episodes show up in Sonarr's RSS on their own, so Sonarr grabs new episodes
   of an airing series without searching. Grabbed topics follow the series/film (checked every 6 hours): paused
   (no update checks) while it isn't monitored in Sonarr/Radarr, untracked when it's deleted there

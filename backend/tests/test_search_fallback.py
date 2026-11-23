@@ -38,13 +38,29 @@ def age_cache(api) -> None:  # noqa: F811  (past the TTL, within the fallback wi
         cache._data[k] = (at - 2 * 3600, rows)
 
 
+def one_season(net) -> None:  # noqa: F811
+    series = [{"title": "Sherlock", "year": 2010, "seriesType": "anime", "tvdbId": 176941,
+               "seasons": [{"seasonNumber": 0}, {"seasonNumber": 1}]}]  # fmt: skip
+    net.routes[("GET", "/sonarr/api/v3/series")] = [httpx.Response(200, json=series)]
+
+
 def test_absolute_episode_answered_by_a_tracked_topic(api, net):  # noqa: F811
     seen = sherlock(api, net)
+    one_season(net)
     _sherlock_tracked(api)
     assert names(ask(api, q="02")) == ["Sherlock S01", "Sherlock S01E02"]
     assert seen == []  # RuTracker not asked
     ask(api, q="05")  # not in the tracked topic (1-3): RuTracker is searched
     assert seen
+
+
+def test_absolute_number_of_a_multi_season_series_is_not_mapped(api, net):  # noqa: F811
+    # Seasons 1 and 2: "02" may be season 2's own episode 2 (Sonarr's scene numbering for
+    # "Show 2nd Season 02"), not the first season's.
+    seen = sherlock(api, net)
+    _sherlock_tracked(api)
+    assert "Sherlock S01E02" not in names(ask(api, q="02"))
+    assert seen  # RuTracker asked, as before
 
 
 def test_id_search_falls_back_on_the_cache_while_rutracker_is_down(api, net):  # noqa: F811

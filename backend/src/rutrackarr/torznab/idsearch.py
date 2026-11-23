@@ -63,6 +63,7 @@ class SeriesContext:
     tmdb_id: int | None = None
     imdb_id: str | None = None
     override: Any = None  # torznab.overrides.Override applied to this context, if any
+    seasons: tuple[int, ...] = ()  # the series' seasons in Sonarr (above 0); empty when unknown
 
 
 @dataclass(frozen=True)
@@ -134,7 +135,10 @@ class Resolver:
                 continue
             queries += [entry.russian, entry.romaji]
         queries += [series.title] if series else []
-        return SeriesContext(tvdb_id, title, entries, {o for o in other if o}, _unique(queries))
+        return SeriesContext(
+            tvdb_id, title, entries, {o for o in other if o}, _unique(queries),
+            seasons=series.seasons if series else (),
+        )  # fmt: skip
 
     async def _tv_tmdb(self, tvdb_id: int, series, other: set[str]) -> SeriesContext | None:  # type: ignore[no-untyped-def]
         tm = await self._tmdb.tv_by_tvdb(tvdb_id) if self._tmdb else None
@@ -148,6 +152,7 @@ class Resolver:
             original_language=tm.original_language if tm else None,
             season_years=tm.season_years if tm else {},
             tmdb_id=tm.tmdb_id if tm else None,
+            seasons=series.seasons if series else (),
         )  # fmt: skip
 
     async def movie(self, tmdb_id: int | None, imdb_id: str | None) -> SeriesContext | None:

@@ -32,6 +32,8 @@ class Request:
     season: int | None = None
     ep: int | None = None
     absolute: int | None = None  # anime absolute episode, from the end of a t=search query
+    # A series with one season: an absolute number is that season's episode number.
+    single_season: bool = False
     cats: list[int] = field(default_factory=list)
     tvdbid: int | None = None
     tmdbid: int | None = None
@@ -378,6 +380,7 @@ async def run(
             and _BARE.match(req.q)
         ):
             req.absolute = int(req.q.strip())  # Sonarr's anime search: tvdbid + q=07
+            req.single_season = ctx.seasons == (1,)
         return await _run_ids(cache, req, ctx, trace, fresh, extra)
     if (req.tvdbid or req.tmdbid or req.imdbid) and not req.q:
         trace.context = {"error": "nothing known about this id, and no title to search for"}
@@ -447,13 +450,14 @@ def single_episode(rel: Release, n: int) -> Release:
 
 def wanted_episode(rel: Release, req: Request) -> int | None:
     """The episode asked for, in the topic's numbering; None when it can't be told. An
-    absolute number maps to a topic numbered absolutely, or to the first season (where
-    absolute and season numbers are the same); a later season's start isn't known here."""
+    absolute number maps to a topic numbered absolutely, or, for a series with one season, to
+    that season. With more seasons Sonarr's number can be the series' absolute one or a later
+    season's own (scene numbering, e.g. "3rd Season 03"), so it's left alone."""
     if req.absolute is not None:
         if is_absolute(rel.title, rel.section):
             return req.absolute
         season = rel.season if rel.season is not None else (rel.title.season or 1)
-        return req.absolute - rel.offset if season == 1 else None
+        return req.absolute - rel.offset if req.single_season and season == 1 else None
     if req.ep is not None and not is_absolute(rel.title, rel.section):
         return req.ep - rel.offset
     return None
