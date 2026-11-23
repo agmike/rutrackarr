@@ -95,6 +95,10 @@ which file of the topic it is (from the file names, or their order); Sonarr then
 of just that file. With *Download only the grabbed episode* on (Settings → Download client),
 qBittorrent downloads only that file (plus its external audio, subtitles and fonts) — the rest of
 the topic downloads when other episodes are grabbed.
+The newest episodes of a tracked series topic updated in the last few days are offered the same
+way in the RSS feed, so Sonarr picks up a new episode without a search. Each release has its own
+GUID (the topic's URL for the topic itself, `…#e5` for its episode 5): Sonarr keeps one release
+per GUID.
 
 Use categories that don't contain each other: in qBittorrent 5.2 a category also lists its
 subcategories, so e.g. `sonarr/default`, `sonarr/rutracker`, `sonarr/completed` — not `sonarr`

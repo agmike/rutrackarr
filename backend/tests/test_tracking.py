@@ -278,6 +278,13 @@ def test_tracked_topic_answers_an_episode_search_itself(api, net):  # noqa: F811
     seen = sherlock(api, net)
     _sherlock_tracked(api)
     assert titles(api, season="1", ep="2") == ["Sherlock S01", "Sherlock S01E02"]
+    r = api.get(
+        "/torznab/api",
+        params={"t": "tvsearch", "tvdbid": "176941", "season": "1", "ep": "2", "apikey": key(api)},
+    )
+    guids = [i.findtext("guid") for i in ET.fromstring(r.content).iter("item")]
+    assert len(guids) == 2 and len(set(guids)) == 2  # the pack and its episode, both kept
+    assert guids[0].endswith("?t=1")  # the pack keeps the topic's URL
     assert seen == []  # RuTracker not asked
     titles(api, season="1", ep="5")  # not in the tracked topic: RuTracker is searched
     assert seen
@@ -291,8 +298,15 @@ def test_rss_offers_the_newest_episodes_of_updated_topics(api, net):  # noqa: F8
     sherlock(api, net)
     _sherlock_tracked(api)
     r = api.get("/torznab/api", params={"t": "tvsearch", "apikey": key(api)})
-    names = [i.findtext("title").split(" 1080p")[0] for i in ET.fromstring(r.content).iter("item")]
+    found = list(ET.fromstring(r.content).iter("item"))
+    names = [i.findtext("title").split(" 1080p")[0] for i in found]
     assert {"Sherlock S01E01", "Sherlock S01E02", "Sherlock S01E03"} <= set(names)
+    # One GUID per release: Sonarr keeps one release per GUID and would drop the episodes.
+    guids = [i.findtext("guid") for i in found]
+    assert len(set(guids)) == len(guids)
+    assert next(
+        g for i, g in zip(found, guids, strict=True) if "S01E02" in i.findtext("title")
+    ).endswith("#e2")
     old = datetime.now(UTC) - timedelta(days=10)
     api.app.state.tracker._save(topic_id=1, last_changed_at=old)
     r = api.get("/torznab/api", params={"t": "tvsearch", "apikey": key(api)})

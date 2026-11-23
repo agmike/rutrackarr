@@ -1,5 +1,6 @@
 """Torznab XML: capabilities, result feed, errors."""
 
+import hashlib
 from email.utils import format_datetime
 from xml.etree import ElementTree as ET
 
@@ -41,16 +42,28 @@ def error(code: int, description: str) -> bytes:
     return _xml(ET.Element("error", code=str(code), description=description))
 
 
+def _guid(topic: str, rel: Release, seen: set[str]) -> str:
+    """Unique per release: Sonarr/Radarr keep one release per GUID, so a topic's single
+    episodes next to its pack (or the topic offered under another name) would be dropped.
+    The topic itself keeps its plain URL."""
+    guid = topic if rel.episode is None else f"{topic}#e{rel.episode}"
+    if guid in seen:
+        guid = f"{topic}#{hashlib.sha256(rel.name.encode()).hexdigest()[:12]}"
+    seen.add(guid)
+    return guid
+
+
 def results(releases: list[Release], download_url, topic_url) -> bytes:  # type: ignore[no-untyped-def]
     rss = ET.Element("rss", version="2.0")
     channel = ET.SubElement(rss, "channel")
     ET.SubElement(channel, "title").text = "RuTrackarr"
+    seen: set[str] = set()
     for rel in releases:
         row = rel.row
         item = ET.SubElement(channel, "item")
         ET.SubElement(item, "title").text = rel.name
         topic, link = topic_url(row.topic_id), download_url(rel)
-        ET.SubElement(item, "guid", isPermaLink="true").text = topic
+        ET.SubElement(item, "guid", isPermaLink="true").text = _guid(topic, rel, seen)
         ET.SubElement(item, "comments").text = topic
         ET.SubElement(item, "link").text = link
         ET.SubElement(item, "description").text = row.title

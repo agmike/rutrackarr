@@ -358,3 +358,20 @@ def test_rutracker_failure_logged_once_and_cleared(api, net):  # noqa: F811
     assert api.get("/api/rutracker/session").json()["last_error"] is None
     kinds = [e["kind"] for e in api.get("/api/status/events").json()["items"]]
     assert kinds == ["rutracker_ok", "rutracker_error"]
+
+
+def test_guid_unique_per_release():
+    from types import SimpleNamespace
+
+    from rutrackarr.torznab.feed import _guid
+
+    seen: set[str] = set()
+    topic = "https://rutracker.org/forum/viewtopic.php?t=1"
+    pack, ep7 = (
+        SimpleNamespace(episode=None, name="A S01"),
+        SimpleNamespace(episode=7, name="A S01E07"),
+    )
+    other = SimpleNamespace(episode=None, name="B S01")  # the same topic under another title
+    guids = [_guid(topic, r, seen) for r in (pack, ep7, other)]
+    assert guids[0] == topic and guids[1] == f"{topic}#e7"
+    assert len(set(guids)) == 3
