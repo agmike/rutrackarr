@@ -75,6 +75,11 @@ async def api(request: Request) -> Response:
             tracked=request.app.state.tracker.searchable,
         )  # fmt: skip
         _link_tracked(request, releases, trace)
+        for stale in trace.stale[:1]:  # answered from the cache: RuTracker is still down
+            request.app.state.rutracker_store.record_error(stale)
+            log.warning(
+                "torznab %s q=%r: RuTracker unavailable, cached result: %s", req.kind, req.q, stale
+            )
     except RuTrackerError as e:
         error = str(e)
         request.app.state.rutracker_store.record_error(error)

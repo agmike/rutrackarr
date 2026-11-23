@@ -134,7 +134,9 @@ The token format is described in `docs/title-format.md`.
   downloaded right away into their own qBittorrent category, e.g. `rutrackarr/tracked`, that no
   Sonarr/Radarr client asks for) or because Sonarr/Radarr grabbed them. Tracked topics take part
   in every Sonarr/Radarr search; a grab of one reuses the torrent that's already there. A tracked
-  topic that has the episode asked for answers the search without RuTracker being asked, and after
+  topic that has the episode asked for answers the search without RuTracker being asked — by
+  season and episode, or by absolute number (Sonarr's anime searches: for an absolutely numbered
+  topic, or a first season) — and after
   an update its newest episodes show up in Sonarr's RSS on their own, so Sonarr grabs new episodes
   of an airing series without searching. Grabbed topics follow the series/film (checked every 6 hours): paused
   (no update checks) while it isn't monitored in Sonarr/Radarr, untracked when it's deleted there
@@ -156,6 +158,10 @@ The token format is described in `docs/title-format.md`.
 - **Overrides:** per series/film (TVDB id / TMDb id): extra or replacement search titles, the
   release title, a season offset, include/exclude title filters, and topics pinned to the series
   (and a season). JSON export/import.
+- **RuTracker down:** a series/film search (by TVDB/TMDb id) that RuTracker can't answer right
+  now — unreachable, maintenance, an HTTP 5xx page — gets the last result for the same query
+  (kept up to 24 hours); with none, and for text searches and RSS, Sonarr/Radarr get the error
+  as usual. Login, captcha and FlareSolverr problems are always reported.
 - **Alerts:** RuTracker failing or back, FlareSolverr/qBittorrent unreachable, repeated failed
   searches, topic torrents removed — shown as a banner and sent through
   [Apprise](https://github.com/caronc/apprise/wiki) (Telegram, ntfy, Discord, email, webhooks…).

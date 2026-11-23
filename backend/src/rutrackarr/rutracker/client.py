@@ -150,7 +150,8 @@ class RuTrackerClient:
             raise CaptchaRequiredError("RuTracker asks for a captcha — log in on the settings page")
         if kind is not PageKind.LOGGED_IN:
             raise UnexpectedPageError(
-                f"Unexpected search page: {parse.page_summary(page.text, page.status_code)}"
+                f"Unexpected search page: {parse.page_summary(page.text, page.status_code)}",
+                status=page.status_code,
             )
         self._store.mark_ok()
         self.last_forums = parse.forums(page.text) or self.last_forums

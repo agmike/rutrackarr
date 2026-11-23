@@ -16,6 +16,7 @@ from rutrackarr.releases.naming import categories, is_absolute, is_movie, releas
 from rutrackarr.releases.sections import Catalogue, Section
 from rutrackarr.releases.title import Episodes, ParsedTitle, parse_title
 from rutrackarr.rutracker.client import RuTrackerClient
+from rutrackarr.rutracker.errors import RuTrackerError, unavailable
 from rutrackarr.rutracker.parse import Forum, SearchRow
 from rutrackarr.torznab.idsearch import Match, Resolver, SeriesContext, match, with_override
 
@@ -67,6 +68,7 @@ class Trace:
     searches: list[dict] = field(default_factory=list)  # {query, results, cached}
     rows: dict[int, dict] = field(default_factory=dict)  # topic id → {..., release, reason}
     tracked: set[int] = field(default_factory=set)  # topic ids that came from tracked topics
+    stale: list[str] = field(default_factory=list)  # RuTracker errors answered from the cache
 
     def seen(self, row: SearchRow, release: "Release | None", reason: str | None) -> None:
         entry = self.rows.setdefault(
@@ -114,6 +116,13 @@ def matches_query(t: ParsedTitle, q: str) -> bool:
         return True
     need = math.ceil(len(wanted) * 0.6)
     return any(len(wanted & _words(n)) >= need for n in t.names)
+
+
+_BARE = re.compile(r"^\s*\d{1,4}\s*$")  # a bare episode number as the query
+
+# Results stay this long (past their TTL) for ID searches to fall back on while RuTracker is
+# unavailable.
+STALE_KEEP = 24 * 3600
 
 
 class SearchCache:
@@ -175,7 +184,9 @@ class SearchCache:
         async with lock:  # concurrent identical queries share one RuTracker request
             now = time.monotonic()
             keep = max(self._ttl(), self._rss_ttl())  # drop entries no lookup can use any more
-            self._data = {k: v for k, v in self._data.items() if now - v[0] < keep}
+            self._data = {
+                k: v for k, v in self._data.items() if now - v[0] < (STALE_KEEP if k else keep)
+            }
             hit = self._data.get(key)
             if hit and now - hit[0] < ttl and not fresh:
                 return hit[1], True
@@ -186,6 +197,14 @@ class SearchCache:
             self._update_catalogue()
             self._data[key] = (time.monotonic(), rows)
             return rows, False
+
+    def stale(self, q: str) -> list[SearchRow] | None:
+        """The last result for this query (up to STALE_KEEP old): for an ID search while
+        RuTracker is unavailable."""
+        hit = self._data.get(" ".join(q.lower().split()))
+        if hit is None or time.monotonic() - hit[0] >= STALE_KEEP:
+            return None
+        return hit[1]
 
     def find(self, topic_id: int) -> SearchRow | None:
         """A topic from recent search results (Sonarr grabs what it was just shown)."""
@@ -351,6 +370,13 @@ async def run(
         ctx = with_override(ctx, ov) if ctx is not None and ov is not None else ctx
     if ctx is not None:
         trace.context = _describe(ctx)
+        if (
+            req.kind == "tvsearch"
+            and req.ep is None
+            and req.absolute is None
+            and _BARE.match(req.q)
+        ):
+            req.absolute = int(req.q.strip())  # Sonarr's anime search: tvdbid + q=07
         return await _run_ids(cache, req, ctx, trace, fresh, extra)
     if (req.tvdbid or req.tmdbid or req.imdbid) and not req.q:
         trace.context = {"error": "nothing known about this id, and no title to search for"}
@@ -414,19 +440,28 @@ def single_episode(rel: Release, n: int) -> Release:
     return replace(rel, title=title, name=name, episode=n)
 
 
+def wanted_episode(rel: Release, req: Request) -> int | None:
+    """The episode asked for, in the topic's numbering; None when it can't be told. An
+    absolute number maps to a topic numbered absolutely, or to the first season (where
+    absolute and season numbers are the same); a later season's start isn't known here."""
+    if req.absolute is not None:
+        if is_absolute(rel.title, rel.section):
+            return req.absolute
+        season = rel.season if rel.season is not None else (rel.title.season or 1)
+        return req.absolute - rel.offset if season == 1 else None
+    if req.ep is not None and not is_absolute(rel.title, rel.section):
+        return req.ep - rel.offset
+    return None
+
+
 def episode_of(rel: Release, req: Request) -> Release | None:
     """For a search for one episode: that episode of a pack that has more, as its own release
     (Sonarr can grab just the episode it misses — of a growing topic, say)."""
     e = rel.title.episodes
     if e is None or e.first is None or e.last is None or e.first == e.last:
         return None
-    if req.absolute is not None and is_absolute(rel.title, rel.section):
-        n = req.absolute
-    elif req.ep is not None and not is_absolute(rel.title, rel.section):
-        n = req.ep - rel.offset
-    else:
-        return None
-    return single_episode(rel, n) if e.first <= n <= e.last else None
+    n = wanted_episode(rel, req)
+    return single_episode(rel, n) if n is not None and e.first <= n <= e.last else None
 
 
 def _describe(ctx: SeriesContext) -> dict:
@@ -464,8 +499,21 @@ async def _run_ids(
         return _keep(req, having, None, trace)
     rows: dict[int, SearchRow] = {}
     for q in ctx.queries:
-        found, cached = await cache.search_ex(q, fresh)
-        trace.searches.append({"query": q, "results": len(found), "cached": cached})
+        try:
+            found, cached = await cache.search_ex(q, fresh)
+        except RuTrackerError as e:
+            # RuTracker down for now: the last result for this query, if there is one; else the
+            # error goes to Sonarr/Radarr as it is.
+            stale = cache.stale(q) if unavailable(e) else None
+            if stale is None:
+                raise
+            trace.stale.append(str(e))
+            trace.searches.append(
+                {"query": q, "results": len(stale), "cached": True, "stale": True}
+            )
+            found = stale
+        else:
+            trace.searches.append({"query": q, "results": len(found), "cached": cached})
         for row in found:
             rows.setdefault(row.topic_id, row)
     for row in extra or []:
@@ -489,8 +537,14 @@ def _tracked_with_episode(
         rel, _ = _build(row, None, ctx, catalogue)
         if rel is None or _reject(req, rel, None) is not None:
             continue
-        e = rel.title.episodes
-        if episode_of(rel, req) is not None or (e is not None and e.first == e.last):
+        e, n = rel.title.episodes, wanted_episode(rel, req)
+        if (
+            n is not None
+            and e is not None
+            and e.first is not None
+            and e.last is not None
+            and (e.first <= n <= e.last)
+        ):
             out.append(rel)
     return out
 

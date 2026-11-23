@@ -9,7 +9,12 @@ from urllib.parse import urlencode, urljoin
 import httpx
 
 from rutrackarr.rutracker import parse
-from rutrackarr.rutracker.errors import CloudflareError, MaintenanceError, RuTrackerError
+from rutrackarr.rutracker.errors import (
+    CloudflareError,
+    MaintenanceError,
+    RuTrackerError,
+    UnreachableError,
+)
 from rutrackarr.rutracker.ratelimit import RequestSpacer
 from rutrackarr.rutracker.store import SessionStore
 
@@ -112,7 +117,7 @@ class RuTrackerHttp:
                 else:
                     resp = await client.request(method, url)
             except httpx.HTTPError as e:
-                raise RuTrackerError(f"RuTracker unreachable: {e}") from e
+                raise UnreachableError(f"RuTracker unreachable: {e}") from e
             # Keep cookies the site set (session, cf_clearance refreshes).
             merged = {**state.cookies, **{c.name: c.value for c in client.cookies.jar}}
             if merged != state.cookies:
