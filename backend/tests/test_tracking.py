@@ -663,12 +663,15 @@ def test_lagging_list_does_not_forget_a_fresh_grab(api, net, qbit, monkeypatch):
     assert any(e["kind"] == "gone" for e in api.get("/api/status/events").json()["items"])
 
 
-# --- 0.16.4: an update's new torrent is started, and stays started after its recheck -------------
+# --- 0.16.4/0.16.11: an update's new torrent is rechecked while stopped, then started ---------
 
 
 def _update_with_old_state(api, net, qbit, state):  # noqa: F811
+    import asyncio
+
     _, old = track_by_url(api, net)
     qbit.torrents[old]["state"] = state
+    qbit.initial_check = 3  # qBittorrent's own first look at the new torrent's files
     new_ep = "[SubsPlus+] Nia Liston - The Merciless Maiden - S01E03 (ADN WEB-DL 1080p AVC AAC) [ABCDEF12].mkv"
     new_data, new_hash = make_torrent(TOPIC, [*NIA_FILES, new_ep])
     for path in ("torrents/recheck", "torrents/renameFolder"):
@@ -677,15 +680,25 @@ def _update_with_old_state(api, net, qbit, state):  # noqa: F811
         topic_page_with(TOPIC + " [1-3 из 12]", new_hash)
     ]
     net.routes[("GET", "/forum/dl.php")] = [httpx.Response(200, content=new_data)]
+    before = len(qbit.calls)
     assert api.post("/api/tracked/6830000/check").json() == {"result": "updated"}
     new = new_hash.lower()
-    # Renamed while stopped, then started, then rechecked: a start during the check is lost.
+    # Waited out the first look, renamed while stopped, rechecked (not dropped), not started yet.
+    assert "recheck dropped" not in qbit.calls
     calls = [
-        c for c in qbit.calls if c in ("torrents/renameFile", "torrents/start", "torrents/recheck")
+        c
+        for c in qbit.calls[before:]
+        if c in ("torrents/renameFile", "torrents/start", "torrents/recheck")
     ]
-    assert calls.index("torrents/start") < calls.index("torrents/recheck")
-    assert calls[-1] == "torrents/recheck"
+    assert calls[-1] == "torrents/recheck" and "torrents/start" not in calls
+    assert qbit.torrents[new]["state"] == "checkingDL"
+    tracker = api.app.state.tracker
+    assert tracker.get(6830000).start_after_check is not None
+    assert asyncio.run(tracker.start_checked()) == 0  # still checking: wait
     qbit.finish_checks()
+    assert qbit.torrents[new]["state"] == "stoppedDL"  # qBittorrent stops it after the check
+    assert asyncio.run(tracker.start_checked()) == 1
+    assert tracker.get(6830000).start_after_check is None
     return qbit.torrents[new]["state"]
 
 
@@ -696,3 +709,19 @@ def test_update_starts_new_torrent_after_recheck(api, net, qbit):  # noqa: F811
 def test_update_starts_new_torrent_when_old_was_stopped(api, net, qbit):  # noqa: F811
     # Stopped by a seeding rule (or anything else): the new episodes still get downloaded.
     assert _update_with_old_state(api, net, qbit, "stoppedUP") == "downloading"
+
+
+def test_a_check_that_never_ran_is_kicked(api, net, qbit):  # noqa: F811
+    import asyncio
+    from datetime import UTC, datetime, timedelta
+
+    _, real = track_by_url(api, net)
+    tracker = api.app.state.tracker
+    qbit.torrents[real] |= {"state": "checkingDL", "progress": 0}
+    tracker._save(topic_id=6830000, start_after_check=datetime.now(UTC) - timedelta(minutes=5))
+    assert asyncio.run(tracker.start_checked()) == 0  # a while yet
+    tracker._save(topic_id=6830000, start_after_check=datetime.now(UTC) - timedelta(hours=1))
+    assert asyncio.run(tracker.start_checked()) == 1
+    assert qbit.torrents[real]["state"] == "downloading"
+    assert "torrents/stop" in qbit.calls and tracker.get(6830000).start_after_check is None
+    assert "check_stuck" in [e["kind"] for e in api.get("/api/status/events").json()["items"]]

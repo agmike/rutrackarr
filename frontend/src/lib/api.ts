@@ -171,7 +171,8 @@ export type DownloadStatus = "downloading" | "stalled" | "queued" | "stopped" | 
 export type DownloadItem = {
   hash: string
   real_hash: string
-  release: string
+  release: string // the newest release using the torrent
+  releases?: string[] // every release using it, oldest first
   category: string
   topic_id: number
   topic_url: string | null

@@ -33,6 +33,28 @@ async def gone(qbit: Qbit, rhash: str, since: datetime | None = None) -> bool:
     return r.status_code == 404
 
 
+# qBittorrent states of a torrent whose files are being looked at (or about to be).
+CHECKING = {
+    "checkingResumeData", "checkingDL", "checkingUP", "queuedForChecking", "metaDL",
+    "forcedMetaDL", "moving", "allocating",
+}  # fmt: skip
+SETTLE_SECONDS = 60
+
+
+async def settled(qbit: Qbit, rhash: str, wait: float = SETTLE_SECONDS) -> bool:
+    """Wait until a freshly added torrent is done with qBittorrent's first look at its files.
+    False when it still isn't after `wait` seconds."""
+    loop = asyncio.get_running_loop()
+    until = loop.time() + wait
+    while True:
+        t = await present(qbit, rhash)
+        if t is not None and str(t.get("state", "")) not in CHECKING:
+            return True
+        if loop.time() >= until:
+            return False
+        await asyncio.sleep(0.5)
+
+
 async def present(qbit: Qbit, rhash: str) -> dict[str, Any] | None:
     """The torrent as qBittorrent lists it, or None."""
     found = await qbit.json("torrents/info", hashes=rhash.lower())

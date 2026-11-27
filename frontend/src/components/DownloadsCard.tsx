@@ -31,6 +31,11 @@ function Row({ d }: { d: DownloadItem }) {
           </a>
         )}
       </div>
+      {(d.releases?.length ?? 0) > 1 && (
+        <p className="truncate text-xs text-muted-foreground" title={d.releases!.join("\n")}>
+          Same torrent: {d.releases!.slice(0, -1).join(" · ")}
+        </p>
+      )}
       {!done && (
         <div className="h-1.5 overflow-hidden rounded bg-muted">
           <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
@@ -88,7 +93,7 @@ export function DownloadsCard() {
         {t && (
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
             <StatTile label="Downloading" value={t.downloading} />
-            <StatTile label="Seeding" value={t.seeding} hint={`${t.releases} releases in ${t.torrents} topic torrents`} />
+            <StatTile label="Seeding" value={t.seeding} hint={`Topic torrents: ${t.releases} releases in ${t.torrents}`} />
             <StatTile label="Download speed" value={`${formatBytes(t.dlspeed)}/s`} />
             <StatTile label="Upload speed" value={`${formatBytes(t.upspeed)}/s`} />
             <StatTile label="Uploaded" value={formatBytes(t.uploaded)} hint="All tracked topic torrents, since added" />

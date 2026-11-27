@@ -136,8 +136,14 @@ def test_two_releases_one_topic_counted_once(api, net, qbit):  # noqa: F811
     _, second = serve(api, net, name=RELEASE.replace("S01", "S01E02"))
     add(api, second)
     qbit.torrents[torrent.read(data).info_hash.lower()] |= {"dlspeed": 500}
-    totals = api.get("/api/status/downloads").json()["totals"]
+    body = api.get("/api/status/downloads").json()
+    totals = body["totals"]
     assert (totals["releases"], totals["torrents"], totals["dlspeed"]) == (2, 1, 500)
+    # One row for the torrent, naming its newest release and listing both; counted once.
+    (item,) = body["items"]
+    assert item["release"] == RELEASE.replace("S01", "S01E02")
+    assert item["releases"] == [RELEASE, RELEASE.replace("S01", "S01E02")]
+    assert totals["downloading"] + totals["seeding"] == 1
 
 
 def test_downloads_proxy_off(api):  # noqa: F811

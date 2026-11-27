@@ -259,17 +259,25 @@ async def downloads(request: Request) -> dict[str, Any]:
             error = str(e)
     client = request.app.state.rutracker
     items = []
+    # One entry per topic torrent: several releases can share one (a pack, then its new
+    # episodes), and they'd all show the torrent's progress and speeds.
+    groups: dict[str, list[Any]] = {}
     for d in active:
         t = reals.get(d.real_hash or "")
         if t is None and error is None:
             if d.real_hash and await topics.gone(qbit, d.real_hash, d.added_at):
                 forget_gone(store, activity, d, request.app.state.tracker)
             continue
+        groups.setdefault(d.real_hash or d.info_hash, []).append(d)
+    for real, rels in groups.items():
+        rels.sort(key=lambda d: d.added_at or datetime.min.replace(tzinfo=UTC))
+        d, t = rels[-1], reals.get(real)  # the newest release names the row
         items.append(
             {
-                "hash": d.info_hash,
-                "real_hash": d.real_hash,
+                "hash": real,
+                "real_hash": real,
                 "release": d.release or d.name,
+                "releases": [r.release or r.name for r in rels],
                 "category": d.category or "",
                 "topic_id": d.topic_id,
                 "topic_url": client.topic_url(d.topic_id) if d.topic_id else None,
@@ -314,7 +322,7 @@ async def downloads(request: Request) -> dict[str, Any]:
     # Totals per topic torrent: several releases can share one.
     torrents = list(reals.values())
     totals = {
-        "releases": len(items),
+        "releases": sum(len(rels) for rels in groups.values()) + len(items) - len(groups),
         "torrents": len(torrents),
         "downloading": sum(1 for i in items if i["status"] in ("downloading", "stalled", "queued")),
         "seeding": sum(1 for i in items if i["status"] == "seeding"),

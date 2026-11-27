@@ -167,3 +167,6 @@ class TrackedRow(Base):
     # Untrack when not updated for this many days. None: by hand → never, grabbed → the
     # tracking.auto_ttl_days setting; 0 → never.
     ttl_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # After an update: the new torrent is rechecked while stopped and started once that's done
+    # (since when it's waiting).
+    start_after_check: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
