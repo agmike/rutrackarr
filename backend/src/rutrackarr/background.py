@@ -130,7 +130,6 @@ async def track_updates(app: FastAPI, state: dict[str, float], now: float) -> No
             await tracker.poll_feeds()
         for t in tracker.due(limit=2):
             await tracker.check(t.topic_id)
-        await tracker.start_checked()  # updated topics' new torrents, once rechecked
         if due(state, "library", now, LIBRARY_SYNC_HOURS * 3600):
             state["library"] = now
             await tracker.sync_library()

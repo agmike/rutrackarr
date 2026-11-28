@@ -64,7 +64,6 @@ class Tracked:
     last_changed_at: datetime | None
     error: str | None
     ttl_days: int | None = None  # own TTL; None: by hand → never, grabbed → the setting
-    start_after_check: datetime | None = None  # an update's new torrent, to start once checked
 
     @property
     def manual(self) -> bool:
@@ -93,11 +92,8 @@ def _from_row(r: TrackedRow) -> Tracked:
         r.topic_id, r.title, r.forum, r.forum_id, r.size, r.seeders, r.info_hash.upper(),
         r.source, r.state, r.content_kind, r.content_id, r.season, r.content_title,
         _utc(r.created_at), _utc(r.last_checked_at), _utc(r.last_changed_at), r.error,  # type: ignore[arg-type]
-        r.ttl_days, _utc(r.start_after_check),
+        r.ttl_days,
     )  # fmt: skip
-
-
-STUCK_CHECK = timedelta(minutes=30)
 
 
 class Tracker:
@@ -289,42 +285,6 @@ class Tracker:
             "gone", f"Tracked topic's torrent removed from qBittorrent: {t.title}",
             level="warn", topic_id=t.topic_id,
         )  # fmt: skip
-
-    # --- starting an update's torrent once it's checked --------------------------------------
-
-    async def start_checked(self) -> int:
-        """Start the new torrents of updated topics whose recheck is done. A check that never got
-        going (still at 0% after STUCK_CHECK) is stopped and started once, which runs it.
-        → torrents started."""
-        started = 0
-        now = datetime.now(UTC)
-        for t in self.all(include_gone=False):
-            if t.start_after_check is None:
-                continue
-            h = t.info_hash.lower()
-            q = await topics.present(self._qbit, h)
-            if q is None:
-                self._save(topic_id=t.topic_id, start_after_check=None)
-                continue
-            state = str(q.get("state", ""))
-            if state in topics.CHECKING:
-                if now - t.start_after_check > STUCK_CHECK and not q.get("progress"):
-                    await self._qbit.post("torrents/stop", hashes=h)
-                    await topics.start(self._qbit, h)
-                    self._save(topic_id=t.topic_id, start_after_check=None)
-                    self._activity.event(
-                        "check_stuck",
-                        f"The updated torrent's check never ran, so it was stopped and started: "
-                        f"{t.title}",
-                        level="warn", topic_id=t.topic_id,
-                    )  # fmt: skip
-                    started += 1
-                continue
-            if state.startswith(("stopped", "paused")):
-                await topics.start(self._qbit, h)
-                started += 1
-            self._save(topic_id=t.topic_id, start_after_check=None)
-        return started
 
     # --- TTL -----------------------------------------------------------------------------------
 
@@ -548,7 +508,6 @@ class Tracker:
         file names (so the recheck finds what's already downloaded), then drop the old one
         keeping its data, and re-point Sonarr's/Radarr's releases."""
         old_hash = t.info_hash.lower()
-        start_after: datetime | None = None
         old = await topics.present(self._qbit, old_hash)
         if old is None:
             if await topics.gone(self._qbit, old_hash, t.created_at):
@@ -598,12 +557,12 @@ class Tracker:
                     await self._qbit.post(
                         "torrents/renameFile", hash=new_hash, oldPath=f, newPath=target
                     )
-            # Rechecked while stopped (qBittorrent runs the check, then stops it again), and
-            # started once the check is done (start_checked), whatever state the old torrent
-            # was in: the update is there to download the new episodes. Started first and then
-            # rechecked, the recheck could be dropped and the torrent sat "checking" for days.
+            # Started, then rechecked: a running torrent stays running through a recheck (a
+            # stopped one is stopped again when the check ends, and a start meanwhile is lost).
+            # Started whatever state the old torrent was in (a seeding rule may have stopped
+            # it): the update is there to download the new episodes.
+            await topics.start(self._qbit, new_hash)
             await self._qbit.post("torrents/recheck", hashes=new_hash)
-            start_after = datetime.now(UTC)
         await topics.delete(self._qbit, old_hash, delete_files=False)
         self._downloads.repoint(old_hash, new_hash)
         before = parse_title(t.title).episodes
@@ -616,7 +575,6 @@ class Tracker:
         self._save(
             topic_id=t.topic_id, info_hash=new_hash.upper(), title=title,
             size=sum(n for _, n in new.files), last_changed_at=datetime.now(UTC), error=None,
-            start_after_check=start_after,
         )  # fmt: skip
         self._activity.event(
             "updated", f"Tracked topic updated ({change}): {title}", topic_id=t.topic_id

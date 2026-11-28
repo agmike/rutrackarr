@@ -154,8 +154,8 @@ The token format is described in `docs/title-format.md`.
   Sonarr's/Radarr's queue. Updates are found through RuTracker's per-section feeds (plus a slow
   per-topic check) and applied in place: the new torrent takes the old one's folder, category
   and file names, so a recheck finds what's downloaded and only new or changed files download.
-  The new torrent is rechecked while stopped and started once the check is done (always, even if
-  the old one was stopped, say by a seeding rule).
+  The new torrent is started, then rechecked once qBittorrent's first look at it is done, and
+  stays started through the check (always, even if the old one was stopped, say by a seeding rule).
 - **Overrides:** per series/film (TVDB id / TMDb id): extra or replacement search titles, the
   release title, a season offset, include/exclude title filters, and topics pinned to the series
   (and a season). JSON export/import.
